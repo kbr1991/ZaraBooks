@@ -22,12 +22,22 @@ import {
   History,
   Link,
   FileSearch,
-  FileBarChart,
   Building2,
   UserCircle,
   CreditCard,
   UserPlus,
   BookMarked,
+  ShoppingCart,
+  ClipboardList,
+  FileCheck,
+  FileMinus,
+  FilePlus,
+  Landmark,
+  ArrowLeftRight,
+  Package,
+  IndianRupee,
+  ArrowDownCircle,
+  ArrowUpCircle,
 } from 'lucide-react';
 
 interface MenuItem {
@@ -44,29 +54,52 @@ interface MenuGroup {
 
 const menuGroups: MenuGroup[] = [
   {
-    label: 'Sales',
-    icon: <FileBarChart className="h-4 w-4" />,
+    label: 'Items',
+    icon: <Package className="h-4 w-4" />,
     items: [
-      { label: 'Invoices', path: '/invoices', icon: <FileText className="h-4 w-4" /> },
+      { label: 'Products & Services', path: '/products', icon: <Package className="h-4 w-4" /> },
+    ],
+  },
+  {
+    label: 'Sales',
+    icon: <ArrowUpCircle className="h-4 w-4" />,
+    items: [
       { label: 'Customers', path: '/customers', icon: <UserCircle className="h-4 w-4" /> },
+      { label: 'Quotes', path: '/quotes', icon: <ClipboardList className="h-4 w-4" /> },
+      { label: 'Sales Orders', path: '/sales-orders', icon: <ShoppingCart className="h-4 w-4" /> },
+      { label: 'Invoices', path: '/invoices', icon: <FileText className="h-4 w-4" /> },
+      { label: 'Payments Received', path: '/payments-received', icon: <ArrowDownCircle className="h-4 w-4" /> },
+      { label: 'Credit Notes', path: '/credit-notes', icon: <FileMinus className="h-4 w-4" /> },
     ],
   },
   {
     label: 'Purchases',
-    icon: <CreditCard className="h-4 w-4" />,
+    icon: <ArrowDownCircle className="h-4 w-4" />,
     items: [
-      { label: 'Expenses', path: '/expenses', icon: <Receipt className="h-4 w-4" /> },
       { label: 'Vendors', path: '/vendors', icon: <Building2 className="h-4 w-4" /> },
+      { label: 'Purchase Orders', path: '/purchase-orders', icon: <ClipboardList className="h-4 w-4" /> },
+      { label: 'Bills', path: '/bills', icon: <FileCheck className="h-4 w-4" /> },
+      { label: 'Payments Made', path: '/payments-made', icon: <ArrowUpCircle className="h-4 w-4" /> },
+      { label: 'Expenses', path: '/expenses', icon: <Receipt className="h-4 w-4" /> },
+      { label: 'Debit Notes', path: '/debit-notes', icon: <FilePlus className="h-4 w-4" /> },
     ],
   },
   {
-    label: 'Accounting',
+    label: 'Banking',
+    icon: <Landmark className="h-4 w-4" />,
+    items: [
+      { label: 'Bank Accounts', path: '/bank-accounts', icon: <Landmark className="h-4 w-4" /> },
+      { label: 'Bank Reconciliation', path: '/bank-reconciliation', icon: <ArrowLeftRight className="h-4 w-4" /> },
+      { label: 'Bank Import', path: '/bank-import', icon: <Upload className="h-4 w-4" /> },
+    ],
+  },
+  {
+    label: 'Accountant',
     icon: <Briefcase className="h-4 w-4" />,
     items: [
       { label: 'Chart of Accounts', path: '/chart-of-accounts', icon: <BookOpen className="h-4 w-4" /> },
       { label: 'Journal Entries', path: '/journal-entries', icon: <FileText className="h-4 w-4" /> },
       { label: 'Ledger View', path: '/ledger', icon: <BookMarked className="h-4 w-4" /> },
-      { label: 'Bank Import', path: '/bank-import', icon: <Upload className="h-4 w-4" /> },
       { label: 'Recurring Entries', path: '/recurring-entries', icon: <RefreshCw className="h-4 w-4" /> },
       { label: 'Parties', path: '/parties', icon: <Users className="h-4 w-4" /> },
     ],
@@ -99,7 +132,7 @@ export default function Sidebar() {
     const activeGroup = menuGroups.find(group =>
       group.items.some(item => location.pathname.startsWith(item.path))
     );
-    return new Set(activeGroup ? [activeGroup.label] : ['Accounting']);
+    return new Set(activeGroup ? [activeGroup.label] : ['Sales']);
   });
 
   const toggleMenu = (label: string) => {

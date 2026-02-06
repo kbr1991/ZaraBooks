@@ -40,6 +40,25 @@ const Ledger = lazy(() => import('@/pages/Ledger'));
 const Vendors = lazy(() => import('@/pages/Vendors'));
 const Customers = lazy(() => import('@/pages/Customers'));
 
+// Sales pages
+const Quotes = lazy(() => import('@/pages/Quotes'));
+const SalesOrders = lazy(() => import('@/pages/SalesOrders'));
+const PaymentsReceived = lazy(() => import('@/pages/PaymentsReceived'));
+const CreditNotes = lazy(() => import('@/pages/CreditNotes'));
+
+// Purchase pages
+const Bills = lazy(() => import('@/pages/Bills'));
+const PurchaseOrders = lazy(() => import('@/pages/PurchaseOrders'));
+const PaymentsMade = lazy(() => import('@/pages/PaymentsMade'));
+const DebitNotes = lazy(() => import('@/pages/DebitNotes'));
+
+// Banking pages
+const BankAccounts = lazy(() => import('@/pages/BankAccounts'));
+const BankReconciliation = lazy(() => import('@/pages/BankReconciliation'));
+
+// Inventory pages
+const Products = lazy(() => import('@/pages/Products'));
+
 // Loading fallback component
 function PageLoader() {
   return (
@@ -256,6 +275,65 @@ export default function App() {
           <Route path="customers" element={
             <Suspense fallback={<PageLoader />}>
               <Customers />
+            </Suspense>
+          } />
+          {/* Sales routes */}
+          <Route path="quotes" element={
+            <Suspense fallback={<PageLoader />}>
+              <Quotes />
+            </Suspense>
+          } />
+          <Route path="sales-orders" element={
+            <Suspense fallback={<PageLoader />}>
+              <SalesOrders />
+            </Suspense>
+          } />
+          <Route path="payments-received" element={
+            <Suspense fallback={<PageLoader />}>
+              <PaymentsReceived />
+            </Suspense>
+          } />
+          <Route path="credit-notes" element={
+            <Suspense fallback={<PageLoader />}>
+              <CreditNotes />
+            </Suspense>
+          } />
+          {/* Purchase routes */}
+          <Route path="bills" element={
+            <Suspense fallback={<PageLoader />}>
+              <Bills />
+            </Suspense>
+          } />
+          <Route path="purchase-orders" element={
+            <Suspense fallback={<PageLoader />}>
+              <PurchaseOrders />
+            </Suspense>
+          } />
+          <Route path="payments-made" element={
+            <Suspense fallback={<PageLoader />}>
+              <PaymentsMade />
+            </Suspense>
+          } />
+          <Route path="debit-notes" element={
+            <Suspense fallback={<PageLoader />}>
+              <DebitNotes />
+            </Suspense>
+          } />
+          {/* Banking routes */}
+          <Route path="bank-accounts" element={
+            <Suspense fallback={<PageLoader />}>
+              <BankAccounts />
+            </Suspense>
+          } />
+          <Route path="bank-reconciliation" element={
+            <Suspense fallback={<PageLoader />}>
+              <BankReconciliation />
+            </Suspense>
+          } />
+          {/* Inventory routes */}
+          <Route path="products" element={
+            <Suspense fallback={<PageLoader />}>
+              <Products />
             </Suspense>
           } />
         </Route>
