@@ -1,0 +1,263 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 142 70% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 142 70% 45%;
+    --radius: 0.5rem;
+    --sidebar: 220 20% 18%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-accent: 142 70% 45%;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 142 70% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 142 70% 45%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* Number input without spinners */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* Table styles */
+.data-table th {
+  @apply text-left font-medium text-muted-foreground;
+}
+
+.data-table td {
+  @apply py-3;
+}
+
+.data-table tr:hover {
+  @apply bg-muted/50;
+}
+
+/* Print styles */
+@media print {
+  /* Hide non-printable elements */
+  .no-print,
+  header:not(.print-header),
+  nav,
+  aside,
+  button:not(.print-button),
+  .sidebar,
+  .toaster,
+  .dialog-overlay {
+    display: none !important;
+  }
+
+  /* Reset page layout */
+  body {
+    font-size: 10pt;
+    background: white !important;
+    color: black !important;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Main content takes full width */
+  main,
+  .print-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 1cm !important;
+  }
+
+  /* Page breaks */
+  .print-break {
+    page-break-before: always;
+  }
+
+  .print-avoid-break {
+    page-break-inside: avoid;
+  }
+
+  /* Report header */
+  .print-header {
+    display: block !important;
+    text-align: center;
+    margin-bottom: 1cm;
+    border-bottom: 2pt solid black;
+    padding-bottom: 0.5cm;
+  }
+
+  .print-header h1 {
+    font-size: 16pt;
+    font-weight: bold;
+    margin: 0;
+  }
+
+  .print-header h2 {
+    font-size: 12pt;
+    font-weight: normal;
+    margin: 0.25cm 0;
+  }
+
+  .print-header p {
+    font-size: 9pt;
+    color: #666;
+    margin: 0;
+  }
+
+  /* Tables */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  th, td {
+    border: 1px solid #ddd !important;
+    padding: 4pt 8pt !important;
+    text-align: left !important;
+  }
+
+  th {
+    background-color: #f5f5f5 !important;
+    font-weight: 600 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Numeric columns */
+  td.text-right,
+  th.text-right {
+    text-align: right !important;
+  }
+
+  /* Financial statements specific */
+  .financial-row-total {
+    font-weight: 700 !important;
+    border-top: 2px solid black !important;
+  }
+
+  .financial-row-subtotal {
+    font-weight: 600 !important;
+    font-style: italic;
+  }
+
+  .financial-amount {
+    font-family: monospace;
+  }
+
+  .financial-negative {
+    color: #c00 !important;
+  }
+
+  /* Hide chart elements */
+  .recharts-wrapper,
+  svg.recharts-surface {
+    display: none !important;
+  }
+
+  /* Cards become borderless */
+  .card {
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+  }
+
+  /* Links */
+  a {
+    color: black !important;
+    text-decoration: none !important;
+  }
+
+  /* Footer */
+  .print-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 8pt;
+    color: #666;
+    padding: 0.5cm;
+    border-top: 1pt solid #ddd;
+  }
+
+  /* Page numbers via CSS counter */
+  @page {
+    size: A4;
+    margin: 1.5cm;
+  }
+
+  /* Landscape for wide reports */
+  .print-landscape {
+    @page {
+      size: A4 landscape;
+    }
+  }
+}
