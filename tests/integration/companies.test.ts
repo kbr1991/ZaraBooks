@@ -114,7 +114,7 @@ describe('Companies API', () => {
       // Create another user
       const [newUser] = await db.insert(schema.users).values({
         email: 'accountant@example.com',
-        passwordHash: 'hashedpassword',
+        password: 'hashedpassword',
         firstName: 'Account',
         lastName: 'Ant',
         isActive: true,

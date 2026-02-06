@@ -10,6 +10,7 @@ import {
   decimal,
   pgEnum,
   index,
+  uniqueIndex,
   jsonb,
 } from 'drizzle-orm/pg-core';
 import { createInsertSchema } from 'drizzle-zod';
@@ -88,7 +89,7 @@ export const companies = pgTable('companies', {
   legalName: varchar('legal_name', { length: 255 }),
   companyType: varchar('company_type', { length: 50 }), // private_limited, llp, partnership, proprietorship, etc.
   // Indian Compliance Fields
-  pan: varchar('pan', { length: 10 }),
+  pan: varchar('pan', { length: 10 }).unique(),
   gstin: varchar('gstin', { length: 15 }),
   tan: varchar('tan', { length: 10 }),
   cin: varchar('cin', { length: 25 }),
@@ -173,7 +174,7 @@ export const chartOfAccounts = pgTable('chart_of_accounts', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => [
-  index('idx_coa_company_code').on(table.companyId, table.code),
+  uniqueIndex('idx_coa_company_code').on(table.companyId, table.code),
   index('idx_coa_parent').on(table.parentAccountId),
 ]);
 

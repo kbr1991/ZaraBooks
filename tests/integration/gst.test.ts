@@ -283,7 +283,7 @@ describe('GST API', () => {
 
       expect(hsn.code).toBe('9983');
       expect(hsn.type).toBe('SAC');
-      expect(hsn.gstRate).toBe('18');
+      expect(hsn.gstRate).toBe('18.00');
     });
   });
 

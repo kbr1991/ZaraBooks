@@ -36,7 +36,7 @@ describe('Auth API', () => {
 
       const [user] = await db.insert(schema.users).values({
         email: userData.email,
-        passwordHash,
+        password: passwordHash,
         firstName: userData.firstName,
         lastName: userData.lastName,
         isActive: true,
@@ -57,7 +57,7 @@ describe('Auth API', () => {
       // Insert first user
       await db.insert(schema.users).values({
         email,
-        passwordHash,
+        password: passwordHash,
         firstName: 'First',
         lastName: 'User',
         isActive: true,
@@ -67,7 +67,7 @@ describe('Auth API', () => {
       await expect(
         db.insert(schema.users).values({
           email,
-          passwordHash,
+          password: passwordHash,
           firstName: 'Second',
           lastName: 'User',
           isActive: true,
@@ -83,13 +83,13 @@ describe('Auth API', () => {
 
       const [user] = await db.insert(schema.users).values({
         email: 'auth@example.com',
-        passwordHash,
+        password: passwordHash,
         firstName: 'Auth',
         lastName: 'Test',
         isActive: true,
       }).returning();
 
-      const isValid = await bcrypt.compare(password, user.passwordHash);
+      const isValid = await bcrypt.compare(password, user.password);
       expect(isValid).toBe(true);
     });
 
@@ -98,13 +98,13 @@ describe('Auth API', () => {
 
       const [user] = await db.insert(schema.users).values({
         email: 'wrongpass@example.com',
-        passwordHash,
+        password: passwordHash,
         firstName: 'Wrong',
         lastName: 'Pass',
         isActive: true,
       }).returning();
 
-      const isValid = await bcrypt.compare('wrongPassword', user.passwordHash);
+      const isValid = await bcrypt.compare('wrongPassword', user.password);
       expect(isValid).toBe(false);
     });
 
@@ -113,7 +113,7 @@ describe('Auth API', () => {
 
       const [user] = await db.insert(schema.users).values({
         email: 'inactive@example.com',
-        passwordHash,
+        password: passwordHash,
         firstName: 'Inactive',
         lastName: 'User',
         isActive: false,

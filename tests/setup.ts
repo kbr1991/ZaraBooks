@@ -13,7 +13,7 @@ const { Pool } = pg;
 
 // Test database connection
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL ||
-  'postgresql://postgres:password@localhost:5433/zarabooks_test';
+  'postgresql://localhost/zarabooks_test';
 
 let testPool: pg.Pool | null = null;
 let testDb: ReturnType<typeof drizzle> | null = null;
@@ -77,7 +77,7 @@ export async function seedTestData() {
   // Create a test user
   const [testUser] = await db.insert(schema.users).values({
     email: 'test@example.com',
-    passwordHash: '$2a$10$K7L1OJ45/4Y2nIvhRVpCe.FSmhDdWoXehVzJptJ/op0lSsvqNu/1W', // "password123"
+    password: '$2a$10$K7L1OJ45/4Y2nIvhRVpCe.FSmhDdWoXehVzJptJ/op0lSsvqNu/1W', // "password123"
     firstName: 'Test',
     lastName: 'User',
     isActive: true,

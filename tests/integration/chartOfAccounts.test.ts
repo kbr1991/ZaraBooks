@@ -167,7 +167,7 @@ describe('Chart of Accounts API', () => {
         .where(eq(schema.chartOfAccounts.id, revenueAccountId!));
 
       expect(updated.gstApplicable).toBe(true);
-      expect(updated.defaultGstRate).toBe('18');
+      expect(updated.defaultGstRate).toBe('18.00');
       expect(updated.hsnSacCode).toBe('998311');
     });
   });
