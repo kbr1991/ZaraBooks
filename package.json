@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "NODE_ENV=development node --env-file=.env --import tsx server/src/index.ts",
     "build": "vite build",
-    "start": "npm run build && npm run db:migrate && NODE_ENV=production tsx server/src/index.ts",
+    "start": "NODE_ENV=production tsx server/src/index.ts",
+    "start:full": "npm run build && npm run db:migrate && npm run start",
     "db:migrate": "tsx server/src/db/migrate.ts",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
