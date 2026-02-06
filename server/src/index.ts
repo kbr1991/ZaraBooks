@@ -80,10 +80,14 @@ app.use('/api/currencies', currenciesRoutes);
 app.use('/api/audit-log', auditLogRoutes);
 app.use('/api/coa-import', coaImportRoutes);
 
-// Health check
-app.get('/api/health', async (_req: Request, res: Response) => {
+// Health check (basic - always returns ok for Railway health checks)
+app.get('/api/health', (_req: Request, res: Response) => {
+  res.json({ status: 'ok', service: 'zara-books' });
+});
+
+// Detailed health check with database
+app.get('/api/health/detailed', async (_req: Request, res: Response) => {
   try {
-    // Check database connectivity
     const result = await pool.query('SELECT NOW()');
     res.json({
       status: 'ok',
