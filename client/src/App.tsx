@@ -32,6 +32,14 @@ const AuditLog = lazy(() => import('@/pages/AuditLog'));
 const PracticeManagerSync = lazy(() => import('@/pages/PracticeManagerSync'));
 const TRACESIntegration = lazy(() => import('@/pages/TRACESIntegration'));
 
+// New pages
+const UserManagement = lazy(() => import('@/pages/UserManagement'));
+const Invoices = lazy(() => import('@/pages/Invoices'));
+const Expenses = lazy(() => import('@/pages/Expenses'));
+const Ledger = lazy(() => import('@/pages/Ledger'));
+const Vendors = lazy(() => import('@/pages/Vendors'));
+const Customers = lazy(() => import('@/pages/Customers'));
+
 // Loading fallback component
 function PageLoader() {
   return (
@@ -218,6 +226,36 @@ export default function App() {
           <Route path="traces" element={
             <Suspense fallback={<PageLoader />}>
               <TRACESIntegration />
+            </Suspense>
+          } />
+          <Route path="users" element={
+            <Suspense fallback={<PageLoader />}>
+              <UserManagement />
+            </Suspense>
+          } />
+          <Route path="invoices" element={
+            <Suspense fallback={<PageLoader />}>
+              <Invoices />
+            </Suspense>
+          } />
+          <Route path="expenses" element={
+            <Suspense fallback={<PageLoader />}>
+              <Expenses />
+            </Suspense>
+          } />
+          <Route path="ledger" element={
+            <Suspense fallback={<PageLoader />}>
+              <Ledger />
+            </Suspense>
+          } />
+          <Route path="vendors" element={
+            <Suspense fallback={<PageLoader />}>
+              <Vendors />
+            </Suspense>
+          } />
+          <Route path="customers" element={
+            <Suspense fallback={<PageLoader />}>
+              <Customers />
             </Suspense>
           } />
         </Route>

@@ -22,6 +22,12 @@ import {
   History,
   Link,
   FileSearch,
+  FileBarChart,
+  Building2,
+  UserCircle,
+  CreditCard,
+  UserPlus,
+  BookMarked,
 } from 'lucide-react';
 
 interface MenuItem {
@@ -38,11 +44,28 @@ interface MenuGroup {
 
 const menuGroups: MenuGroup[] = [
   {
+    label: 'Sales',
+    icon: <FileBarChart className="h-4 w-4" />,
+    items: [
+      { label: 'Invoices', path: '/invoices', icon: <FileText className="h-4 w-4" /> },
+      { label: 'Customers', path: '/customers', icon: <UserCircle className="h-4 w-4" /> },
+    ],
+  },
+  {
+    label: 'Purchases',
+    icon: <CreditCard className="h-4 w-4" />,
+    items: [
+      { label: 'Expenses', path: '/expenses', icon: <Receipt className="h-4 w-4" /> },
+      { label: 'Vendors', path: '/vendors', icon: <Building2 className="h-4 w-4" /> },
+    ],
+  },
+  {
     label: 'Accounting',
     icon: <Briefcase className="h-4 w-4" />,
     items: [
       { label: 'Chart of Accounts', path: '/chart-of-accounts', icon: <BookOpen className="h-4 w-4" /> },
       { label: 'Journal Entries', path: '/journal-entries', icon: <FileText className="h-4 w-4" /> },
+      { label: 'Ledger View', path: '/ledger', icon: <BookMarked className="h-4 w-4" /> },
       { label: 'Bank Import', path: '/bank-import', icon: <Upload className="h-4 w-4" /> },
       { label: 'Recurring Entries', path: '/recurring-entries', icon: <RefreshCw className="h-4 w-4" /> },
       { label: 'Parties', path: '/parties', icon: <Users className="h-4 w-4" /> },
@@ -200,6 +223,20 @@ export default function Sidebar() {
 
       {/* Settings & Admin */}
       <div className="border-t border-sidebar-foreground/10 p-4 space-y-1">
+        <NavLink
+          to="/users"
+          className={({ isActive }) =>
+            cn(
+              'flex items-center gap-3 px-2 py-2 text-sm rounded-md transition-colors',
+              isActive
+                ? 'bg-sidebar-accent/20 text-sidebar-accent'
+                : 'text-sidebar-foreground/70 hover:bg-sidebar-foreground/10 hover:text-sidebar-foreground'
+            )
+          }
+        >
+          <UserPlus className="h-4 w-4" />
+          User Management
+        </NavLink>
         <NavLink
           to="/audit-log"
           className={({ isActive }) =>

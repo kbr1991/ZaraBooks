@@ -24,6 +24,9 @@ import agingReportsRoutes from './routes/agingReports';
 import currenciesRoutes from './routes/currencies';
 import auditLogRoutes from './routes/auditLog';
 import coaImportRoutes from './routes/coaImport';
+import userManagementRoutes from './routes/userManagement';
+import invoicesRoutes from './routes/invoices';
+import expensesRoutes from './routes/expenses';
 
 const { Pool } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -79,6 +82,9 @@ app.use('/api/aging', agingReportsRoutes);
 app.use('/api/currencies', currenciesRoutes);
 app.use('/api/audit-log', auditLogRoutes);
 app.use('/api/coa-import', coaImportRoutes);
+app.use('/api/users', userManagementRoutes);
+app.use('/api/invoices', invoicesRoutes);
+app.use('/api/expenses', expensesRoutes);
 
 // Health check (basic - always returns ok for Railway health checks)
 app.get('/api/health', (_req: Request, res: Response) => {

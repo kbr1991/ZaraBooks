@@ -702,6 +702,123 @@ export const pmSyncLog = pgTable('pm_sync_log', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+// ==================== USER INVITATIONS ====================
+export const userInvitations = pgTable('user_invitations', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id', { length: 36 }).references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  email: varchar('email', { length: 255 }).notNull(),
+  role: companyRoleEnum('role').default('viewer').notNull(),
+  token: varchar('token', { length: 100 }).notNull(),
+  invitedByUserId: varchar('invited_by_user_id', { length: 36 }).references(() => users.id).notNull(),
+  expiresAt: timestamp('expires_at').notNull(),
+  acceptedAt: timestamp('accepted_at'),
+  isActive: boolean('is_active').default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_invitation_email').on(table.email),
+  index('idx_invitation_token').on(table.token),
+]);
+
+// ==================== INVOICE STATUS ENUM ====================
+export const invoiceStatusEnum = pgEnum('invoice_status', ['draft', 'sent', 'paid', 'partially_paid', 'overdue', 'cancelled', 'void']);
+export const expenseStatusEnum = pgEnum('expense_status', ['pending', 'approved', 'rejected', 'paid']);
+
+// ==================== INVOICES ====================
+export const invoices = pgTable('invoices', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id', { length: 36 }).references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  fiscalYearId: varchar('fiscal_year_id', { length: 36 }).references(() => fiscalYears.id).notNull(),
+  invoiceNumber: varchar('invoice_number', { length: 50 }).notNull(),
+  invoiceDate: date('invoice_date').notNull(),
+  dueDate: date('due_date').notNull(),
+  customerId: varchar('customer_id', { length: 36 }).references(() => parties.id).notNull(),
+  // Address
+  billingAddress: text('billing_address'),
+  shippingAddress: text('shipping_address'),
+  // Amounts
+  subtotal: decimal('subtotal', { precision: 18, scale: 2 }).default('0').notNull(),
+  discountAmount: decimal('discount_amount', { precision: 18, scale: 2 }).default('0'),
+  discountPercent: decimal('discount_percent', { precision: 5, scale: 2 }),
+  taxAmount: decimal('tax_amount', { precision: 18, scale: 2 }).default('0'),
+  totalAmount: decimal('total_amount', { precision: 18, scale: 2 }).notNull(),
+  paidAmount: decimal('paid_amount', { precision: 18, scale: 2 }).default('0'),
+  balanceDue: decimal('balance_due', { precision: 18, scale: 2 }).notNull(),
+  // GST
+  cgst: decimal('cgst', { precision: 18, scale: 2 }).default('0'),
+  sgst: decimal('sgst', { precision: 18, scale: 2 }).default('0'),
+  igst: decimal('igst', { precision: 18, scale: 2 }).default('0'),
+  // Status
+  status: invoiceStatusEnum('status').default('draft').notNull(),
+  // References
+  journalEntryId: varchar('journal_entry_id', { length: 36 }).references(() => journalEntries.id),
+  notes: text('notes'),
+  terms: text('terms'),
+  // Metadata
+  createdByUserId: varchar('created_by_user_id', { length: 36 }).references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_invoice_company').on(table.companyId),
+  index('idx_invoice_customer').on(table.customerId),
+  index('idx_invoice_number').on(table.companyId, table.invoiceNumber),
+]);
+
+// ==================== INVOICE LINES ====================
+export const invoiceLines = pgTable('invoice_lines', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  invoiceId: varchar('invoice_id', { length: 36 }).references(() => invoices.id, { onDelete: 'cascade' }).notNull(),
+  accountId: varchar('account_id', { length: 36 }).references(() => chartOfAccounts.id),
+  description: text('description').notNull(),
+  hsnSacCode: varchar('hsn_sac_code', { length: 20 }),
+  quantity: decimal('quantity', { precision: 18, scale: 4 }).default('1').notNull(),
+  unitPrice: decimal('unit_price', { precision: 18, scale: 2 }).notNull(),
+  discountPercent: decimal('discount_percent', { precision: 5, scale: 2 }).default('0'),
+  discountAmount: decimal('discount_amount', { precision: 18, scale: 2 }).default('0'),
+  taxRate: decimal('tax_rate', { precision: 5, scale: 2 }).default('0'),
+  taxAmount: decimal('tax_amount', { precision: 18, scale: 2 }).default('0'),
+  amount: decimal('amount', { precision: 18, scale: 2 }).notNull(),
+  sortOrder: integer('sort_order').default(0),
+});
+
+// ==================== EXPENSES ====================
+export const expenses = pgTable('expenses', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id', { length: 36 }).references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  fiscalYearId: varchar('fiscal_year_id', { length: 36 }).references(() => fiscalYears.id).notNull(),
+  expenseNumber: varchar('expense_number', { length: 50 }).notNull(),
+  expenseDate: date('expense_date').notNull(),
+  vendorId: varchar('vendor_id', { length: 36 }).references(() => parties.id),
+  accountId: varchar('account_id', { length: 36 }).references(() => chartOfAccounts.id).notNull(),
+  paymentAccountId: varchar('payment_account_id', { length: 36 }).references(() => chartOfAccounts.id),
+  // Category
+  category: varchar('category', { length: 100 }),
+  // Amounts
+  amount: decimal('amount', { precision: 18, scale: 2 }).notNull(),
+  taxAmount: decimal('tax_amount', { precision: 18, scale: 2 }).default('0'),
+  totalAmount: decimal('total_amount', { precision: 18, scale: 2 }).notNull(),
+  // Payment
+  paymentMethod: varchar('payment_method', { length: 50 }), // cash, bank_transfer, credit_card, etc.
+  referenceNumber: varchar('reference_number', { length: 100 }),
+  // Status & Approval
+  status: expenseStatusEnum('status').default('pending').notNull(),
+  approvedByUserId: varchar('approved_by_user_id', { length: 36 }).references(() => users.id),
+  approvedAt: timestamp('approved_at'),
+  // References
+  journalEntryId: varchar('journal_entry_id', { length: 36 }).references(() => journalEntries.id),
+  description: text('description'),
+  notes: text('notes'),
+  // Receipt
+  receiptUrl: varchar('receipt_url', { length: 500 }),
+  // Metadata
+  createdByUserId: varchar('created_by_user_id', { length: 36 }).references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_expense_company').on(table.companyId),
+  index('idx_expense_vendor').on(table.vendorId),
+  index('idx_expense_date').on(table.companyId, table.expenseDate),
+]);
+
 // ==================== AI CONVERSATIONS ====================
 export const aiConversations = pgTable('ai_conversations', {
   id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
@@ -964,6 +1081,89 @@ export const aiConversationsRelations = relations(aiConversations, ({ one }) => 
   }),
 }));
 
+export const userInvitationsRelations = relations(userInvitations, ({ one }) => ({
+  company: one(companies, {
+    fields: [userInvitations.companyId],
+    references: [companies.id],
+  }),
+  invitedBy: one(users, {
+    fields: [userInvitations.invitedByUserId],
+    references: [users.id],
+  }),
+}));
+
+export const invoicesRelations = relations(invoices, ({ one, many }) => ({
+  company: one(companies, {
+    fields: [invoices.companyId],
+    references: [companies.id],
+  }),
+  fiscalYear: one(fiscalYears, {
+    fields: [invoices.fiscalYearId],
+    references: [fiscalYears.id],
+  }),
+  customer: one(parties, {
+    fields: [invoices.customerId],
+    references: [parties.id],
+  }),
+  journalEntry: one(journalEntries, {
+    fields: [invoices.journalEntryId],
+    references: [journalEntries.id],
+  }),
+  createdBy: one(users, {
+    fields: [invoices.createdByUserId],
+    references: [users.id],
+  }),
+  lines: many(invoiceLines),
+}));
+
+export const invoiceLinesRelations = relations(invoiceLines, ({ one }) => ({
+  invoice: one(invoices, {
+    fields: [invoiceLines.invoiceId],
+    references: [invoices.id],
+  }),
+  account: one(chartOfAccounts, {
+    fields: [invoiceLines.accountId],
+    references: [chartOfAccounts.id],
+  }),
+}));
+
+export const expensesRelations = relations(expenses, ({ one }) => ({
+  company: one(companies, {
+    fields: [expenses.companyId],
+    references: [companies.id],
+  }),
+  fiscalYear: one(fiscalYears, {
+    fields: [expenses.fiscalYearId],
+    references: [fiscalYears.id],
+  }),
+  vendor: one(parties, {
+    fields: [expenses.vendorId],
+    references: [parties.id],
+  }),
+  account: one(chartOfAccounts, {
+    fields: [expenses.accountId],
+    references: [chartOfAccounts.id],
+  }),
+  paymentAccount: one(chartOfAccounts, {
+    fields: [expenses.paymentAccountId],
+    references: [chartOfAccounts.id],
+    relationName: 'paymentAccount',
+  }),
+  journalEntry: one(journalEntries, {
+    fields: [expenses.journalEntryId],
+    references: [journalEntries.id],
+  }),
+  createdBy: one(users, {
+    fields: [expenses.createdByUserId],
+    references: [users.id],
+  }),
+  approvedBy: one(users, {
+    fields: [expenses.approvedByUserId],
+    references: [users.id],
+    relationName: 'approver',
+  }),
+}));
+
 export const exchangeRatesRelations = relations(exchangeRates, ({ one }) => ({
   company: one(companies, {
     fields: [exchangeRates.companyId],
@@ -1096,6 +1296,29 @@ export const insertPmIntegrationConfigSchema = createInsertSchema(pmIntegrationC
 export const insertAiConversationSchema = createInsertSchema(aiConversations).omit({
   id: true,
   createdAt: true,
+});
+
+export const insertUserInvitationSchema = createInsertSchema(userInvitations).omit({
+  id: true,
+  createdAt: true,
+  acceptedAt: true,
+});
+
+export const insertInvoiceSchema = createInsertSchema(invoices).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertInvoiceLineSchema = createInsertSchema(invoiceLines).omit({
+  id: true,
+});
+
+export const insertExpenseSchema = createInsertSchema(expenses).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  approvedAt: true,
 });
 
 export const insertCurrencySchema = createInsertSchema(currencies).omit({
