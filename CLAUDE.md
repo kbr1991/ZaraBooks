@@ -1,312 +1,383 @@
-# Zara Books - Development Guide
+# Zara Books - Project Memory
 
-## Project Overview
+> This file maintains context for Claude Code sessions. Updated as features are added.
 
-Zara Books is a full-featured accounting application for the services industry, targeting CA firms and startups. It can be used standalone or integrated with the CA Practice Manager.
+---
 
-## Tech Stack
+## Quick Reference
 
-- **Frontend**: React 18 + TypeScript + Vite
-- **Backend**: Express.js + TypeScript
-- **Database**: PostgreSQL with Drizzle ORM
-- **Styling**: Tailwind CSS + shadcn/ui patterns
-- **State Management**: React Query (TanStack Query)
-- **Forms**: React Hook Form + Zod validation
+| Item | Value |
+|------|-------|
+| **Project** | Zara Books - Accounting Application |
+| **Target Users** | CA firms, Startups (India) |
+| **Deployed URL** | https://scintillating-stillness-production-02d4.up.railway.app |
+| **Repository** | https://github.com/kbr1991/ZaraBooks |
+| **Current Version** | 1.1.0 |
+
+### Tech Stack
+- **Frontend:** React 18, TypeScript, Tailwind CSS, React Query, React Router
+- **Backend:** Express.js, TypeScript
+- **Database:** PostgreSQL with Drizzle ORM (Railway)
+- **UI:** Radix UI (shadcn/ui), Lucide icons
+- **Testing:** Vitest (123 tests: 74 unit + 49 integration)
+
+### Default Login
+- Email: `admin@example.com`
+- Password: `Admin@123`
+
+---
 
 ## Project Structure
 
 ```
 ZaraBooks/
-├── client/                 # React frontend
-│   └── src/
-│       ├── components/     # UI components
-│       │   └── ui/         # Reusable UI primitives
-│       ├── pages/          # Page components
-│       ├── hooks/          # Custom hooks
-│       └── lib/            # Utilities
-├── server/                 # Express backend
-│   └── src/
-│       ├── routes/         # API route handlers
-│       ├── services/       # Business logic services
-│       ├── middleware/     # Express middleware
-│       └── db/             # Database config
-├── shared/                 # Shared types and schema
-│   └── schema.ts           # Drizzle schema
-└── docs/                   # Documentation
+├── client/src/
+│   ├── components/
+│   │   ├── ui/              # shadcn/ui components
+│   │   ├── layout/          # Sidebar, MainLayout
+│   │   └── accounting/      # Domain components
+│   ├── pages/               # Route pages (40+ pages)
+│   ├── hooks/               # Custom hooks
+│   └── lib/                 # Utilities
+├── server/src/
+│   ├── routes/              # API endpoints
+│   ├── services/            # Business logic
+│   ├── middleware/          # Auth middleware
+│   └── db/                  # Database config
+├── shared/
+│   └── schema.ts            # Drizzle schema (28+ tables)
+├── tests/
+│   ├── unit/                # Unit tests
+│   └── integration/         # DB integration tests
+├── CLAUDE.md                # This file
+├── DEVELOPMENT_SOP.md       # Development standards
+├── CHANGELOG.md             # Version history
+└── README.md                # Project overview
 ```
 
-## Getting Started
+---
 
-### Prerequisites
+## Completed Features
 
-- Node.js 18+
-- PostgreSQL 14+
+### Core Accounting
+| Module | Description | Status |
+|--------|-------------|--------|
+| Multi-Company | Multiple companies per user | Done |
+| Chart of Accounts | 5-level hierarchy, India GAAP template | Done |
+| Journal Entries | Double-entry with validation | Done |
+| Trial Balance | Real-time calculation, drill-down | Done |
+| Balance Sheet | Schedule III format | Done |
+| Profit & Loss | Schedule III format | Done |
+| Cash Flow | Indirect method | Done |
+| Ledger View | Account transaction history | Done |
 
-### Installation
+### Sales Module
+| Module | Description | Status |
+|--------|-------------|--------|
+| Customers | Customer management with receivables | Done |
+| Quotes | Estimates with convert-to-invoice | Done |
+| Sales Orders | Order tracking | Done |
+| Invoices | GST-compliant invoicing | Done |
+| Payments Received | Customer payment tracking | Done |
+| Credit Notes | Customer refunds | Done |
 
-```bash
-cd ZaraBooks
+### Purchases Module
+| Module | Description | Status |
+|--------|-------------|--------|
+| Vendors | Vendor management with payables | Done |
+| Purchase Orders | PO management | Done |
+| Bills | Vendor invoice tracking | Done |
+| Expenses | Expense with approval workflow | Done |
+| Payments Made | Vendor payment tracking | Done |
+| Debit Notes | Vendor adjustments | Done |
 
-# Install dependencies
-npm install
+### Banking
+| Module | Description | Status |
+|--------|-------------|--------|
+| Bank Accounts | Multi-account management | Done |
+| Bank Reconciliation | Transaction matching | Done |
+| Bank Import | CSV/OFX import | Done |
 
-# Set up environment
-cp .env.example .env
-# Edit .env with your database credentials
+### Inventory
+| Module | Description | Status |
+|--------|-------------|--------|
+| Products & Services | Item catalog with HSN/SAC | Done |
 
-# Run database migrations
-npm run db:push
+### Compliance (India)
+| Module | Description | Status |
+|--------|-------------|--------|
+| GST Config | Multi-GSTIN support | Done |
+| GSTR-1 | Outward supplies data | Done |
+| GSTR-3B | Summary return | Done |
+| ITC Register | Input tax credit tracking | Done |
+| TDS Register | TDS deduction tracking | Done |
+| TDS Challans | Payment tracking | Done |
 
-# Seed initial data
-npm run db:seed
+### Administration
+| Module | Description | Status |
+|--------|-------------|--------|
+| User Management | Invite users with roles | Done |
+| Audit Log | Activity tracking | Done |
+| Settings | Company, fiscal year config | Done |
 
-# Start development server
-npm run dev
-```
+---
 
-The app runs on:
-- Frontend: http://localhost:5173
-- Backend: http://localhost:3001
+## Pending Features
 
-## Database Schema
+### Phase 2 - Compliance Enhancement
+- [ ] E-Invoice generation (NIC API)
+- [ ] E-Way Bill generation
+- [ ] GSTR-2A/2B reconciliation
+- [ ] Form 26AS download (TRACES)
+- [ ] TDS return preparation
 
-The schema is defined in `shared/schema.ts` using Drizzle ORM. Key tables:
+### Phase 3 - Integration
+- [ ] Practice Manager sync
+- [ ] Bank statement auto-import
+- [ ] WhatsApp notifications
+- [ ] Email reminders
 
-### Core Tables
-- `users` - User accounts
-- `companies` - Company records
-- `companyUsers` - User-company relationships with roles
-- `fiscalYears` - Accounting periods
-- `chartOfAccounts` - Account hierarchy
-- `journalEntries` - Transaction headers
-- `journalEntryLines` - Transaction lines
-- `parties` - Customers, vendors, employees
+### Phase 4 - AI & Analytics
+- [ ] AI Assistant (Claude API)
+- [ ] Custom dashboard builder
+- [ ] Advanced analytics
+- [ ] Predictive insights
 
-### GST Tables
-- `gstConfig` - GST registration settings
-- `gstr1Entries` - Outward supplies
-- `gstr3bSummary` - Monthly summaries
-- `itcRegister` - Input tax credit
-- `gstPayments` - GST payment challans
+---
 
-### TDS Tables
-- `tdsSections` - TDS section master
-- `tdsDeductions` - TDS deducted
-- `tdsChallans` - TDS payments
-- `form26asEntries` - Tax credit statement
+## Database Schema Overview
 
-## Key Concepts
+### Core Tables (15)
+- `users`, `companies`, `companyUsers`, `userInvitations`
+- `fiscalYears`, `chartOfAccounts`, `costCenters`
+- `journalEntries`, `journalEntryLines`
+- `parties`, `bankAccounts`, `attachments`, `auditLog`
+- `recurringEntryTemplates`, `trialBalanceCache`
 
-### Double-Entry Accounting
-Every journal entry must balance (debits = credits). The system validates this before saving.
+### Transaction Tables (6)
+- `invoices`, `invoiceLines`
+- `expenses`
+- `quotes`, `salesOrders`, `purchaseOrders`
+- `bills`, `creditNotes`, `debitNotes`
+- `paymentsReceived`, `paymentsMade`
 
-### Chart of Accounts
-5-level hierarchy following India GAAP (Schedule III):
-1. Category (Asset, Liability, Equity, Income, Expense)
-2. Group
-3. Sub-Group
-4. Account
-5. Sub-Account
+### GST Tables (6)
+- `gstConfig`, `gstr1Entries`, `gstr3bSummary`
+- `itcRegister`, `gstPayments`, `hsnSacMaster`
 
-### Fiscal Years
-Configurable fiscal year (default: April-March for India). Years can be locked to prevent modifications.
+### TDS Tables (4)
+- `tdsSections`, `tdsDeductions`, `tdsChallans`, `form26asEntries`
 
-### Journal Entry Status
-- `draft` - Editable, not affecting reports
-- `posted` - Finalized, affects reports
-- `reversed` - Cancelled via reversal entry
+### Integration Tables (4)
+- `pmIntegrationConfig`, `pmSyncLog`
+- `aiConversations`, `financialStatementRuns`
 
-## API Endpoints
+---
+
+## API Routes
 
 ### Authentication
-- `POST /api/auth/register` - Create account
-- `POST /api/auth/login` - Login
-- `GET /api/auth/me` - Current user
-- `POST /api/auth/logout` - Logout
-
-### Companies
-- `GET /api/companies` - List user's companies
-- `POST /api/companies` - Create company
-- `POST /api/companies/:id/select` - Switch company
-
-### Chart of Accounts
-- `GET /api/chart-of-accounts` - Get accounts (hierarchical)
-- `POST /api/chart-of-accounts` - Create account
-- `GET /api/chart-of-accounts/ledgers/list` - Flat list of ledger accounts
-
-### Journal Entries
-- `GET /api/journal-entries` - List entries
-- `POST /api/journal-entries` - Create entry
-- `PATCH /api/journal-entries/:id` - Update entry
-- `POST /api/journal-entries/:id/post` - Post entry
-- `POST /api/journal-entries/:id/reverse` - Reverse entry
-
-### Reports
-- `GET /api/trial-balance` - Trial balance
-- `GET /api/financial-statements/balance-sheet` - Balance sheet
-- `GET /api/financial-statements/profit-loss` - P&L statement
-- `GET /api/trial-balance/export` - Excel export
-
-### GST
-- `GET /api/gst/config` - GST settings
-- `GET /api/gst/gstr1?period=MMYYYY` - GSTR-1 data
-- `GET /api/gst/gstr3b?period=MMYYYY` - GSTR-3B summary
-- `GET /api/gst/itc?period=MMYYYY` - ITC register
-
-### TDS
-- `GET /api/tds/sections` - TDS section master
-- `GET /api/tds/deductions` - TDS deductions
-- `POST /api/tds/deductions` - Record TDS
-- `GET /api/tds/challans` - TDS challans
-
-## Development Commands
-
-```bash
-# Start dev server (frontend + backend)
-npm run dev
-
-# Generate database migrations
-npm run db:generate
-
-# Push schema changes
-npm run db:push
-
-# Open Drizzle Studio
-npm run db:studio
-
-# Seed database
-npm run db:seed
-
-# Build for production
-npm run build
-
-# Start production server
-npm run start
+```
+POST /api/auth/register
+POST /api/auth/login
+GET  /api/auth/me
+POST /api/auth/logout
 ```
 
-## India GAAP Compliance
+### Companies
+```
+GET    /api/companies
+POST   /api/companies
+POST   /api/companies/:id/select
+```
 
-The system follows Schedule III of the Companies Act for financial statement presentation:
+### Chart of Accounts
+```
+GET    /api/chart-of-accounts
+POST   /api/chart-of-accounts
+GET    /api/chart-of-accounts/ledgers/list
+GET    /api/chart-of-accounts/:id/transactions
+```
 
-### Balance Sheet Format
-- **Assets**
-  - Non-current Assets (PPE, Intangible, Investments, etc.)
-  - Current Assets (Inventories, Receivables, Cash, etc.)
-- **Equity & Liabilities**
-  - Shareholders' Equity
-  - Non-current Liabilities
-  - Current Liabilities
+### Journal Entries
+```
+GET    /api/journal-entries
+POST   /api/journal-entries
+PATCH  /api/journal-entries/:id
+POST   /api/journal-entries/:id/post
+POST   /api/journal-entries/:id/reverse
+```
 
-### P&L Format
-- Revenue from Operations
-- Other Income
-- Total Income
-- Expenses (Cost of materials, Employee benefit, Finance costs, Depreciation, Other)
-- Profit Before Tax
-- Tax Expense
-- Profit After Tax
+### Sales
+```
+/api/customers, /api/quotes, /api/sales-orders
+/api/invoices, /api/payments-received, /api/credit-notes
+```
 
-## GST Compliance
+### Purchases
+```
+/api/vendors, /api/purchase-orders, /api/bills
+/api/expenses, /api/payments-made, /api/debit-notes
+```
 
-### Supported Returns
-- GSTR-1 (Outward Supplies)
-- GSTR-3B (Summary Return)
-- ITC Register with 2A/2B reconciliation
+### Banking
+```
+/api/bank-accounts, /api/bank-reconciliation, /api/bank-import
+```
 
-### Features
-- HSN/SAC code mapping
-- E-Invoice generation (via NIC API)
-- E-Way Bill generation (via NIC API)
+### Reports
+```
+GET /api/trial-balance
+GET /api/financial-statements/balance-sheet
+GET /api/financial-statements/profit-loss
+GET /api/financial-statements/cash-flow
+```
 
-## TDS Compliance
+### Compliance
+```
+/api/gst/*, /api/tds/*
+```
 
-### Supported Sections
-- 192 (Salary)
-- 194A (Interest)
-- 194C (Contractor)
-- 194H (Commission)
-- 194I (Rent)
-- 194J (Professional Services)
+---
 
-### Features
-- TDS deduction tracking
-- Challan generation
-- Form 26AS matching
-- TRACES integration
+## Key Files Reference
 
-## Integration
+| Purpose | File |
+|---------|------|
+| Database Schema | `shared/schema.ts` |
+| API Routes | `server/src/routes/*.ts` |
+| Pages | `client/src/pages/*.tsx` |
+| Sidebar | `client/src/components/layout/Sidebar.tsx` |
+| App Routes | `client/src/App.tsx` |
+| Test Setup | `tests/setup.ts` |
+| Seed Data | `server/src/db/seed.ts` |
 
-### Practice Manager Integration
-When integrated with CA Practice Manager:
-- Automatic journal entries from invoices
-- Payment sync to bank entries
-- Expense sync to expense entries
-- Client import
+---
 
-Configure in Settings > Integration.
+## Change Log
+
+### 2025-02-07 (Session 2 - Zoho Books Parity)
+
+**New Pages Created (11):**
+- `Quotes.tsx` - Quote management with convert-to-invoice
+- `SalesOrders.tsx` - Sales order tracking
+- `PaymentsReceived.tsx` - Customer payment tracking
+- `CreditNotes.tsx` - Customer credit notes
+- `Bills.tsx` - Vendor bill management
+- `PurchaseOrders.tsx` - Purchase order management
+- `PaymentsMade.tsx` - Vendor payment tracking
+- `DebitNotes.tsx` - Vendor debit notes
+- `BankAccounts.tsx` - Bank account management
+- `BankReconciliation.tsx` - Transaction reconciliation
+- `Products.tsx` - Products & services catalog
+
+**Sidebar Reorganization:**
+- Items: Products & Services
+- Sales: Customers, Quotes, Sales Orders, Invoices, Payments Received, Credit Notes
+- Purchases: Vendors, Purchase Orders, Bills, Payments Made, Expenses, Debit Notes
+- Banking: Bank Accounts, Bank Reconciliation, Bank Import
+- Accountant: Chart of Accounts, Journal Entries, Ledger View, Recurring Entries, Parties
+- Reports: Trial Balance, Balance Sheet, P&L, Cash Flow, Aging Reports
+- Compliance: GST Returns, TDS Register
+
+**Files Modified:**
+- `client/src/App.tsx` - Added routes for 11 new pages
+- `client/src/components/layout/Sidebar.tsx` - Complete restructure
+
+### 2025-02-07 (Session 1 - Test Fixes)
+
+**Test Infrastructure:**
+- Fixed all 123 tests (74 unit + 49 integration)
+- Fixed column name `passwordHash` → `password` in test files
+- Fixed decimal assertions (`'18.00'` format)
+- Added unique constraint on `companies.pan`
+- Added unique index on `(companyId, code)` for chart_of_accounts
+- Updated test database URL
+
+**Files Modified:**
+- `shared/schema.ts` - Added uniqueIndex import, constraints
+- `tests/setup.ts` - Fixed default DB URL
+- `tests/integration/*.ts` - Fixed column names and assertions
+
+### 2025-02-06 (Initial Development)
+
+**Core Features Implemented:**
+- Multi-company support with user roles
+- Chart of Accounts with India GAAP template
+- Journal Entry system with double-entry validation
+- Trial Balance with real-time calculation
+- Financial Statements (Schedule III)
+- GST module (GSTR-1, GSTR-3B, ITC)
+- TDS module
+- User management with invitations
+- Customer and Vendor management
+- Invoice and Expense tracking
+
+---
 
 ## Environment Variables
 
 ```env
-DATABASE_URL=postgresql://user:pass@localhost:5432/zarabooks
-SESSION_SECRET=your-secret-key
-ANTHROPIC_API_KEY=your-api-key  # For AI assistant
-NIC_API_URL=https://einvoice1.gst.gov.in
-NIC_API_KEY=your-nic-key  # For e-invoice
-TRACES_API_URL=https://www.tdscpc.gov.in
+# Database
+DATABASE_URL=postgresql://localhost/zarabooks
+
+# Session
+SESSION_SECRET=your-session-secret
+
+# AI (optional)
+ANTHROPIC_API_KEY=your-api-key
+
+# E-Invoice (optional)
+NIC_EINVOICE_CLIENT_ID=
+NIC_EINVOICE_CLIENT_SECRET=
+
+# TRACES (optional)
+TRACES_API_TAN=
+TRACES_API_USER=
+TRACES_API_PASSWORD=
 ```
 
-## Common Tasks
-
-### Adding a New Account Type
-1. Update enum in `shared/schema.ts`
-2. Add to CoA template in `db/seed.ts`
-3. Update Schedule III mappings
-
-### Adding a New GST Return Section
-1. Add table in `shared/schema.ts`
-2. Create route in `server/src/routes/gst.ts`
-3. Add UI in `client/src/pages/GSTReturns.tsx`
-
-### Adding a New Report
-1. Create route in `server/src/routes/financialStatements.ts`
-2. Add export function in `server/src/services/excelExport.ts`
-3. Create page in `client/src/pages/`
-4. Add route in `client/src/App.tsx`
-
-## Testing
-
-```bash
-# Run tests (when implemented)
-npm test
-
-# Run specific test file
-npm test -- --grep "journal entries"
-```
+---
 
 ## Deployment
 
 ### Railway
-
-1. Create new service in Railway
-2. Connect to GitHub repository
-3. Set environment variables
-4. Deploy
-
-### Docker
-
 ```bash
-docker build -t zarabooks .
-docker run -p 3001:3001 -e DATABASE_URL=... zarabooks
+# Deploy
+npx @railway/cli up
+
+# Check status
+npx @railway/cli status
+
+# View logs
+npx @railway/cli logs
+
+# Health check
+curl https://scintillating-stillness-production-02d4.up.railway.app/api/health
 ```
 
-## Contributing
+### Database
+```bash
+# Push schema
+npm run db:push
 
-1. Create feature branch
-2. Make changes
-3. Test locally
-4. Submit PR
+# Seed data
+npm run db:seed
 
-## Support
+# Open Drizzle Studio
+npm run db:studio
+```
 
-For issues, create a GitHub issue or contact support.
+---
+
+## Session Notes
+
+_Add notes during development sessions_
+
+### Current Session
+- Added professional documentation (README, SOP, CHANGELOG)
+- Updated CLAUDE.md with comprehensive project memory
+
+---
+
+*Last Updated: 2025-02-07*
