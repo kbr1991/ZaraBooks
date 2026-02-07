@@ -169,31 +169,36 @@ router.post('/', requireCompany, async (req: AuthenticatedRequest, res) => {
       }
     }
 
+    // Handle empty strings for numeric fields
+    const parsedCreditDays = creditDays === '' || creditDays === undefined ? null : creditDays;
+    const parsedCreditLimit = creditLimit === '' || creditLimit === undefined ? null : creditLimit;
+    const parsedOpeningBalance = openingBalance === '' || openingBalance === undefined ? '0' : openingBalance;
+
     const [party] = await db.insert(parties).values({
       companyId: req.companyId!,
       partyType,
       name,
-      legalName,
-      code,
-      pan,
-      gstin,
-      gstRegistrationType,
-      email,
-      phone,
-      address,
-      city,
-      state,
-      stateCode,
-      pincode,
-      country,
-      defaultAccountId,
-      creditDays,
-      creditLimit,
-      tdsApplicable,
-      defaultTdsSection,
-      openingBalance,
-      openingBalanceType,
-      currentBalance: openingBalance || '0',
+      legalName: legalName || null,
+      code: code || null,
+      pan: pan || null,
+      gstin: gstin || null,
+      gstRegistrationType: gstRegistrationType || null,
+      email: email || null,
+      phone: phone || null,
+      address: address || null,
+      city: city || null,
+      state: state || null,
+      stateCode: stateCode || null,
+      pincode: pincode || null,
+      country: country || null,
+      defaultAccountId: defaultAccountId || null,
+      creditDays: parsedCreditDays,
+      creditLimit: parsedCreditLimit,
+      tdsApplicable: tdsApplicable || false,
+      defaultTdsSection: defaultTdsSection || null,
+      openingBalance: parsedOpeningBalance,
+      openingBalanceType: openingBalanceType || 'debit',
+      currentBalance: parsedOpeningBalance,
       isActive: true,
     }).returning();
 
