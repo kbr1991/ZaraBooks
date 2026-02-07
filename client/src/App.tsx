@@ -59,6 +59,9 @@ const BankReconciliation = lazy(() => import('@/pages/BankReconciliation'));
 // Inventory pages
 const Products = lazy(() => import('@/pages/Products'));
 
+// Accountant pages
+const CostCenters = lazy(() => import('@/pages/CostCenters'));
+
 // Loading fallback component
 function PageLoader() {
   return (
@@ -334,6 +337,12 @@ export default function App() {
           <Route path="products" element={
             <Suspense fallback={<PageLoader />}>
               <Products />
+            </Suspense>
+          } />
+          {/* Accountant routes */}
+          <Route path="cost-centers" element={
+            <Suspense fallback={<PageLoader />}>
+              <CostCenters />
             </Suspense>
           } />
         </Route>

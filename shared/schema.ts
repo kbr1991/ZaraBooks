@@ -1172,6 +1172,747 @@ export const exchangeRatesRelations = relations(exchangeRates, ({ one }) => ({
   }),
 }));
 
+// ==================== PRODUCTS ====================
+export const productTypeEnum = pgEnum('product_type', ['goods', 'service']);
+
+export const products = pgTable('products', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id', { length: 36 }).references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  code: varchar('code', { length: 50 }),
+  name: varchar('name', { length: 255 }).notNull(),
+  description: text('description'),
+  type: productTypeEnum('type').default('goods').notNull(),
+  unit: varchar('unit', { length: 20 }).default('nos'),
+  hsnSacCode: varchar('hsn_sac_code', { length: 20 }),
+  gstRate: decimal('gst_rate', { precision: 5, scale: 2 }).default('18'),
+  purchasePrice: decimal('purchase_price', { precision: 18, scale: 2 }),
+  salesPrice: decimal('sales_price', { precision: 18, scale: 2 }),
+  openingStock: decimal('opening_stock', { precision: 18, scale: 4 }).default('0'),
+  currentStock: decimal('current_stock', { precision: 18, scale: 4 }).default('0'),
+  reorderLevel: decimal('reorder_level', { precision: 18, scale: 4 }),
+  purchaseAccountId: varchar('purchase_account_id', { length: 36 }).references(() => chartOfAccounts.id),
+  salesAccountId: varchar('sales_account_id', { length: 36 }).references(() => chartOfAccounts.id),
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_products_company').on(table.companyId),
+]);
+
+// ==================== QUOTES ====================
+export const quoteStatusEnum = pgEnum('quote_status', ['draft', 'sent', 'accepted', 'rejected', 'expired', 'converted']);
+
+export const quotes = pgTable('quotes', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id', { length: 36 }).references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  fiscalYearId: varchar('fiscal_year_id', { length: 36 }).references(() => fiscalYears.id).notNull(),
+  quoteNumber: varchar('quote_number', { length: 50 }).notNull(),
+  quoteDate: date('quote_date').notNull(),
+  validUntil: date('valid_until').notNull(),
+  customerId: varchar('customer_id', { length: 36 }).references(() => parties.id).notNull(),
+  billingAddress: text('billing_address'),
+  shippingAddress: text('shipping_address'),
+  subtotal: decimal('subtotal', { precision: 18, scale: 2 }).default('0').notNull(),
+  discountAmount: decimal('discount_amount', { precision: 18, scale: 2 }).default('0'),
+  taxAmount: decimal('tax_amount', { precision: 18, scale: 2 }).default('0'),
+  totalAmount: decimal('total_amount', { precision: 18, scale: 2 }).notNull(),
+  cgst: decimal('cgst', { precision: 18, scale: 2 }).default('0'),
+  sgst: decimal('sgst', { precision: 18, scale: 2 }).default('0'),
+  igst: decimal('igst', { precision: 18, scale: 2 }).default('0'),
+  status: quoteStatusEnum('status').default('draft').notNull(),
+  notes: text('notes'),
+  terms: text('terms'),
+  convertedToInvoiceId: varchar('converted_to_invoice_id', { length: 36 }),
+  convertedToOrderId: varchar('converted_to_order_id', { length: 36 }),
+  createdByUserId: varchar('created_by_user_id', { length: 36 }).references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_quotes_company').on(table.companyId),
+  index('idx_quotes_customer').on(table.customerId),
+]);
+
+export const quoteLines = pgTable('quote_lines', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  quoteId: varchar('quote_id', { length: 36 }).references(() => quotes.id, { onDelete: 'cascade' }).notNull(),
+  productId: varchar('product_id', { length: 36 }).references(() => products.id),
+  description: text('description').notNull(),
+  hsnSacCode: varchar('hsn_sac_code', { length: 20 }),
+  quantity: decimal('quantity', { precision: 18, scale: 4 }).default('1').notNull(),
+  unitPrice: decimal('unit_price', { precision: 18, scale: 2 }).notNull(),
+  discountPercent: decimal('discount_percent', { precision: 5, scale: 2 }).default('0'),
+  discountAmount: decimal('discount_amount', { precision: 18, scale: 2 }).default('0'),
+  taxRate: decimal('tax_rate', { precision: 5, scale: 2 }).default('0'),
+  taxAmount: decimal('tax_amount', { precision: 18, scale: 2 }).default('0'),
+  amount: decimal('amount', { precision: 18, scale: 2 }).notNull(),
+  sortOrder: integer('sort_order').default(0),
+});
+
+// ==================== SALES ORDERS ====================
+export const salesOrderStatusEnum = pgEnum('sales_order_status', ['draft', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled']);
+
+export const salesOrders = pgTable('sales_orders', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id', { length: 36 }).references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  fiscalYearId: varchar('fiscal_year_id', { length: 36 }).references(() => fiscalYears.id).notNull(),
+  orderNumber: varchar('order_number', { length: 50 }).notNull(),
+  orderDate: date('order_date').notNull(),
+  expectedDeliveryDate: date('expected_delivery_date'),
+  customerId: varchar('customer_id', { length: 36 }).references(() => parties.id).notNull(),
+  quoteId: varchar('quote_id', { length: 36 }).references(() => quotes.id),
+  billingAddress: text('billing_address'),
+  shippingAddress: text('shipping_address'),
+  subtotal: decimal('subtotal', { precision: 18, scale: 2 }).default('0').notNull(),
+  discountAmount: decimal('discount_amount', { precision: 18, scale: 2 }).default('0'),
+  taxAmount: decimal('tax_amount', { precision: 18, scale: 2 }).default('0'),
+  totalAmount: decimal('total_amount', { precision: 18, scale: 2 }).notNull(),
+  cgst: decimal('cgst', { precision: 18, scale: 2 }).default('0'),
+  sgst: decimal('sgst', { precision: 18, scale: 2 }).default('0'),
+  igst: decimal('igst', { precision: 18, scale: 2 }).default('0'),
+  status: salesOrderStatusEnum('status').default('draft').notNull(),
+  convertedToInvoiceId: varchar('converted_to_invoice_id', { length: 36 }),
+  notes: text('notes'),
+  createdByUserId: varchar('created_by_user_id', { length: 36 }).references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_sales_orders_company').on(table.companyId),
+  index('idx_sales_orders_customer').on(table.customerId),
+]);
+
+export const salesOrderLines = pgTable('sales_order_lines', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  salesOrderId: varchar('sales_order_id', { length: 36 }).references(() => salesOrders.id, { onDelete: 'cascade' }).notNull(),
+  productId: varchar('product_id', { length: 36 }).references(() => products.id),
+  description: text('description').notNull(),
+  hsnSacCode: varchar('hsn_sac_code', { length: 20 }),
+  quantity: decimal('quantity', { precision: 18, scale: 4 }).default('1').notNull(),
+  unitPrice: decimal('unit_price', { precision: 18, scale: 2 }).notNull(),
+  discountPercent: decimal('discount_percent', { precision: 5, scale: 2 }).default('0'),
+  discountAmount: decimal('discount_amount', { precision: 18, scale: 2 }).default('0'),
+  taxRate: decimal('tax_rate', { precision: 5, scale: 2 }).default('0'),
+  taxAmount: decimal('tax_amount', { precision: 18, scale: 2 }).default('0'),
+  amount: decimal('amount', { precision: 18, scale: 2 }).notNull(),
+  sortOrder: integer('sort_order').default(0),
+});
+
+// ==================== CREDIT NOTES ====================
+export const creditNoteStatusEnum = pgEnum('credit_note_status', ['draft', 'issued', 'applied', 'cancelled']);
+
+export const creditNotes = pgTable('credit_notes', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id', { length: 36 }).references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  fiscalYearId: varchar('fiscal_year_id', { length: 36 }).references(() => fiscalYears.id).notNull(),
+  creditNoteNumber: varchar('credit_note_number', { length: 50 }).notNull(),
+  creditNoteDate: date('credit_note_date').notNull(),
+  customerId: varchar('customer_id', { length: 36 }).references(() => parties.id).notNull(),
+  originalInvoiceId: varchar('original_invoice_id', { length: 36 }).references(() => invoices.id),
+  reason: text('reason'),
+  subtotal: decimal('subtotal', { precision: 18, scale: 2 }).default('0').notNull(),
+  taxAmount: decimal('tax_amount', { precision: 18, scale: 2 }).default('0'),
+  totalAmount: decimal('total_amount', { precision: 18, scale: 2 }).notNull(),
+  cgst: decimal('cgst', { precision: 18, scale: 2 }).default('0'),
+  sgst: decimal('sgst', { precision: 18, scale: 2 }).default('0'),
+  igst: decimal('igst', { precision: 18, scale: 2 }).default('0'),
+  status: creditNoteStatusEnum('status').default('draft').notNull(),
+  appliedToInvoiceId: varchar('applied_to_invoice_id', { length: 36 }),
+  journalEntryId: varchar('journal_entry_id', { length: 36 }).references(() => journalEntries.id),
+  notes: text('notes'),
+  createdByUserId: varchar('created_by_user_id', { length: 36 }).references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_credit_notes_company').on(table.companyId),
+  index('idx_credit_notes_customer').on(table.customerId),
+]);
+
+export const creditNoteLines = pgTable('credit_note_lines', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  creditNoteId: varchar('credit_note_id', { length: 36 }).references(() => creditNotes.id, { onDelete: 'cascade' }).notNull(),
+  productId: varchar('product_id', { length: 36 }).references(() => products.id),
+  accountId: varchar('account_id', { length: 36 }).references(() => chartOfAccounts.id),
+  description: text('description').notNull(),
+  hsnSacCode: varchar('hsn_sac_code', { length: 20 }),
+  quantity: decimal('quantity', { precision: 18, scale: 4 }).default('1').notNull(),
+  unitPrice: decimal('unit_price', { precision: 18, scale: 2 }).notNull(),
+  taxRate: decimal('tax_rate', { precision: 5, scale: 2 }).default('0'),
+  taxAmount: decimal('tax_amount', { precision: 18, scale: 2 }).default('0'),
+  amount: decimal('amount', { precision: 18, scale: 2 }).notNull(),
+  sortOrder: integer('sort_order').default(0),
+});
+
+// ==================== BILLS ====================
+export const billStatusEnum = pgEnum('bill_status', ['draft', 'pending', 'paid', 'partially_paid', 'overdue', 'cancelled']);
+
+export const bills = pgTable('bills', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id', { length: 36 }).references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  fiscalYearId: varchar('fiscal_year_id', { length: 36 }).references(() => fiscalYears.id).notNull(),
+  billNumber: varchar('bill_number', { length: 50 }).notNull(),
+  vendorBillNumber: varchar('vendor_bill_number', { length: 100 }),
+  billDate: date('bill_date').notNull(),
+  dueDate: date('due_date').notNull(),
+  vendorId: varchar('vendor_id', { length: 36 }).references(() => parties.id).notNull(),
+  subtotal: decimal('subtotal', { precision: 18, scale: 2 }).default('0').notNull(),
+  taxAmount: decimal('tax_amount', { precision: 18, scale: 2 }).default('0'),
+  totalAmount: decimal('total_amount', { precision: 18, scale: 2 }).notNull(),
+  paidAmount: decimal('paid_amount', { precision: 18, scale: 2 }).default('0'),
+  balanceDue: decimal('balance_due', { precision: 18, scale: 2 }).notNull(),
+  cgst: decimal('cgst', { precision: 18, scale: 2 }).default('0'),
+  sgst: decimal('sgst', { precision: 18, scale: 2 }).default('0'),
+  igst: decimal('igst', { precision: 18, scale: 2 }).default('0'),
+  status: billStatusEnum('status').default('draft').notNull(),
+  journalEntryId: varchar('journal_entry_id', { length: 36 }).references(() => journalEntries.id),
+  notes: text('notes'),
+  createdByUserId: varchar('created_by_user_id', { length: 36 }).references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_bills_company').on(table.companyId),
+  index('idx_bills_vendor').on(table.vendorId),
+]);
+
+export const billLines = pgTable('bill_lines', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  billId: varchar('bill_id', { length: 36 }).references(() => bills.id, { onDelete: 'cascade' }).notNull(),
+  productId: varchar('product_id', { length: 36 }).references(() => products.id),
+  accountId: varchar('account_id', { length: 36 }).references(() => chartOfAccounts.id),
+  description: text('description').notNull(),
+  hsnSacCode: varchar('hsn_sac_code', { length: 20 }),
+  quantity: decimal('quantity', { precision: 18, scale: 4 }).default('1').notNull(),
+  unitPrice: decimal('unit_price', { precision: 18, scale: 2 }).notNull(),
+  taxRate: decimal('tax_rate', { precision: 5, scale: 2 }).default('0'),
+  taxAmount: decimal('tax_amount', { precision: 18, scale: 2 }).default('0'),
+  amount: decimal('amount', { precision: 18, scale: 2 }).notNull(),
+  sortOrder: integer('sort_order').default(0),
+});
+
+// ==================== PURCHASE ORDERS ====================
+export const purchaseOrderStatusEnum = pgEnum('purchase_order_status', ['draft', 'issued', 'acknowledged', 'received', 'cancelled']);
+
+export const purchaseOrders = pgTable('purchase_orders', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id', { length: 36 }).references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  fiscalYearId: varchar('fiscal_year_id', { length: 36 }).references(() => fiscalYears.id).notNull(),
+  orderNumber: varchar('order_number', { length: 50 }).notNull(),
+  orderDate: date('order_date').notNull(),
+  expectedDate: date('expected_date'),
+  vendorId: varchar('vendor_id', { length: 36 }).references(() => parties.id).notNull(),
+  subtotal: decimal('subtotal', { precision: 18, scale: 2 }).default('0').notNull(),
+  taxAmount: decimal('tax_amount', { precision: 18, scale: 2 }).default('0'),
+  totalAmount: decimal('total_amount', { precision: 18, scale: 2 }).notNull(),
+  cgst: decimal('cgst', { precision: 18, scale: 2 }).default('0'),
+  sgst: decimal('sgst', { precision: 18, scale: 2 }).default('0'),
+  igst: decimal('igst', { precision: 18, scale: 2 }).default('0'),
+  status: purchaseOrderStatusEnum('status').default('draft').notNull(),
+  convertedToBillId: varchar('converted_to_bill_id', { length: 36 }),
+  notes: text('notes'),
+  createdByUserId: varchar('created_by_user_id', { length: 36 }).references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_purchase_orders_company').on(table.companyId),
+  index('idx_purchase_orders_vendor').on(table.vendorId),
+]);
+
+export const purchaseOrderLines = pgTable('purchase_order_lines', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  purchaseOrderId: varchar('purchase_order_id', { length: 36 }).references(() => purchaseOrders.id, { onDelete: 'cascade' }).notNull(),
+  productId: varchar('product_id', { length: 36 }).references(() => products.id),
+  description: text('description').notNull(),
+  hsnSacCode: varchar('hsn_sac_code', { length: 20 }),
+  quantity: decimal('quantity', { precision: 18, scale: 4 }).default('1').notNull(),
+  unitPrice: decimal('unit_price', { precision: 18, scale: 2 }).notNull(),
+  taxRate: decimal('tax_rate', { precision: 5, scale: 2 }).default('0'),
+  taxAmount: decimal('tax_amount', { precision: 18, scale: 2 }).default('0'),
+  amount: decimal('amount', { precision: 18, scale: 2 }).notNull(),
+  sortOrder: integer('sort_order').default(0),
+});
+
+// ==================== DEBIT NOTES ====================
+export const debitNoteStatusEnum = pgEnum('debit_note_status', ['draft', 'issued', 'applied', 'cancelled']);
+
+export const debitNotes = pgTable('debit_notes', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id', { length: 36 }).references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  fiscalYearId: varchar('fiscal_year_id', { length: 36 }).references(() => fiscalYears.id).notNull(),
+  debitNoteNumber: varchar('debit_note_number', { length: 50 }).notNull(),
+  debitNoteDate: date('debit_note_date').notNull(),
+  vendorId: varchar('vendor_id', { length: 36 }).references(() => parties.id).notNull(),
+  originalBillId: varchar('original_bill_id', { length: 36 }).references(() => bills.id),
+  reason: text('reason'),
+  subtotal: decimal('subtotal', { precision: 18, scale: 2 }).default('0').notNull(),
+  taxAmount: decimal('tax_amount', { precision: 18, scale: 2 }).default('0'),
+  totalAmount: decimal('total_amount', { precision: 18, scale: 2 }).notNull(),
+  cgst: decimal('cgst', { precision: 18, scale: 2 }).default('0'),
+  sgst: decimal('sgst', { precision: 18, scale: 2 }).default('0'),
+  igst: decimal('igst', { precision: 18, scale: 2 }).default('0'),
+  status: debitNoteStatusEnum('status').default('draft').notNull(),
+  appliedToBillId: varchar('applied_to_bill_id', { length: 36 }),
+  journalEntryId: varchar('journal_entry_id', { length: 36 }).references(() => journalEntries.id),
+  notes: text('notes'),
+  createdByUserId: varchar('created_by_user_id', { length: 36 }).references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_debit_notes_company').on(table.companyId),
+  index('idx_debit_notes_vendor').on(table.vendorId),
+]);
+
+export const debitNoteLines = pgTable('debit_note_lines', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  debitNoteId: varchar('debit_note_id', { length: 36 }).references(() => debitNotes.id, { onDelete: 'cascade' }).notNull(),
+  productId: varchar('product_id', { length: 36 }).references(() => products.id),
+  accountId: varchar('account_id', { length: 36 }).references(() => chartOfAccounts.id),
+  description: text('description').notNull(),
+  hsnSacCode: varchar('hsn_sac_code', { length: 20 }),
+  quantity: decimal('quantity', { precision: 18, scale: 4 }).default('1').notNull(),
+  unitPrice: decimal('unit_price', { precision: 18, scale: 2 }).notNull(),
+  taxRate: decimal('tax_rate', { precision: 5, scale: 2 }).default('0'),
+  taxAmount: decimal('tax_amount', { precision: 18, scale: 2 }).default('0'),
+  amount: decimal('amount', { precision: 18, scale: 2 }).notNull(),
+  sortOrder: integer('sort_order').default(0),
+});
+
+// ==================== PAYMENTS RECEIVED ====================
+export const paymentsReceived = pgTable('payments_received', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id', { length: 36 }).references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  fiscalYearId: varchar('fiscal_year_id', { length: 36 }).references(() => fiscalYears.id).notNull(),
+  paymentNumber: varchar('payment_number', { length: 50 }).notNull(),
+  paymentDate: date('payment_date').notNull(),
+  customerId: varchar('customer_id', { length: 36 }).references(() => parties.id).notNull(),
+  amount: decimal('amount', { precision: 18, scale: 2 }).notNull(),
+  paymentMethod: varchar('payment_method', { length: 50 }), // cash, bank_transfer, cheque, upi, card
+  referenceNumber: varchar('reference_number', { length: 100 }),
+  bankAccountId: varchar('bank_account_id', { length: 36 }).references(() => bankAccounts.id),
+  notes: text('notes'),
+  journalEntryId: varchar('journal_entry_id', { length: 36 }).references(() => journalEntries.id),
+  createdByUserId: varchar('created_by_user_id', { length: 36 }).references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_payments_received_company').on(table.companyId),
+  index('idx_payments_received_customer').on(table.customerId),
+]);
+
+export const paymentAllocations = pgTable('payment_allocations', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  paymentReceivedId: varchar('payment_received_id', { length: 36 }).references(() => paymentsReceived.id, { onDelete: 'cascade' }).notNull(),
+  invoiceId: varchar('invoice_id', { length: 36 }).references(() => invoices.id).notNull(),
+  amount: decimal('amount', { precision: 18, scale: 2 }).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// ==================== PAYMENTS MADE ====================
+export const paymentsMade = pgTable('payments_made', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id', { length: 36 }).references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  fiscalYearId: varchar('fiscal_year_id', { length: 36 }).references(() => fiscalYears.id).notNull(),
+  paymentNumber: varchar('payment_number', { length: 50 }).notNull(),
+  paymentDate: date('payment_date').notNull(),
+  vendorId: varchar('vendor_id', { length: 36 }).references(() => parties.id).notNull(),
+  amount: decimal('amount', { precision: 18, scale: 2 }).notNull(),
+  paymentMethod: varchar('payment_method', { length: 50 }), // cash, bank_transfer, cheque, upi, card
+  referenceNumber: varchar('reference_number', { length: 100 }),
+  bankAccountId: varchar('bank_account_id', { length: 36 }).references(() => bankAccounts.id),
+  notes: text('notes'),
+  journalEntryId: varchar('journal_entry_id', { length: 36 }).references(() => journalEntries.id),
+  createdByUserId: varchar('created_by_user_id', { length: 36 }).references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_payments_made_company').on(table.companyId),
+  index('idx_payments_made_vendor').on(table.vendorId),
+]);
+
+export const paymentMadeAllocations = pgTable('payment_made_allocations', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  paymentMadeId: varchar('payment_made_id', { length: 36 }).references(() => paymentsMade.id, { onDelete: 'cascade' }).notNull(),
+  billId: varchar('bill_id', { length: 36 }).references(() => bills.id).notNull(),
+  amount: decimal('amount', { precision: 18, scale: 2 }).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// ==================== BANK RECONCILIATION ====================
+export const bankReconciliationStatusEnum = pgEnum('bank_reconciliation_status', ['in_progress', 'completed']);
+
+export const bankReconciliations = pgTable('bank_reconciliations', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id', { length: 36 }).references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  bankAccountId: varchar('bank_account_id', { length: 36 }).references(() => bankAccounts.id).notNull(),
+  statementDate: date('statement_date').notNull(),
+  openingBalance: decimal('opening_balance', { precision: 18, scale: 2 }).default('0'),
+  closingBalance: decimal('closing_balance', { precision: 18, scale: 2 }).default('0'),
+  status: bankReconciliationStatusEnum('status').default('in_progress').notNull(),
+  reconciledByUserId: varchar('reconciled_by_user_id', { length: 36 }).references(() => users.id),
+  reconciledAt: timestamp('reconciled_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_bank_reconciliation_company').on(table.companyId),
+  index('idx_bank_reconciliation_account').on(table.bankAccountId),
+]);
+
+export const bankReconciliationLines = pgTable('bank_reconciliation_lines', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  reconciliationId: varchar('reconciliation_id', { length: 36 }).references(() => bankReconciliations.id, { onDelete: 'cascade' }).notNull(),
+  transactionDate: date('transaction_date').notNull(),
+  description: text('description'),
+  reference: varchar('reference', { length: 100 }),
+  debit: decimal('debit', { precision: 18, scale: 2 }).default('0'),
+  credit: decimal('credit', { precision: 18, scale: 2 }).default('0'),
+  journalEntryId: varchar('journal_entry_id', { length: 36 }).references(() => journalEntries.id),
+  isReconciled: boolean('is_reconciled').default(false),
+  reconciledAt: timestamp('reconciled_at'),
+});
+
+// ==================== NEW RELATIONS ====================
+
+export const productsRelations = relations(products, ({ one }) => ({
+  company: one(companies, {
+    fields: [products.companyId],
+    references: [companies.id],
+  }),
+  purchaseAccount: one(chartOfAccounts, {
+    fields: [products.purchaseAccountId],
+    references: [chartOfAccounts.id],
+    relationName: 'purchaseAccount',
+  }),
+  salesAccount: one(chartOfAccounts, {
+    fields: [products.salesAccountId],
+    references: [chartOfAccounts.id],
+    relationName: 'salesAccount',
+  }),
+}));
+
+export const quotesRelations = relations(quotes, ({ one, many }) => ({
+  company: one(companies, {
+    fields: [quotes.companyId],
+    references: [companies.id],
+  }),
+  fiscalYear: one(fiscalYears, {
+    fields: [quotes.fiscalYearId],
+    references: [fiscalYears.id],
+  }),
+  customer: one(parties, {
+    fields: [quotes.customerId],
+    references: [parties.id],
+  }),
+  createdBy: one(users, {
+    fields: [quotes.createdByUserId],
+    references: [users.id],
+  }),
+  lines: many(quoteLines),
+}));
+
+export const quoteLinesRelations = relations(quoteLines, ({ one }) => ({
+  quote: one(quotes, {
+    fields: [quoteLines.quoteId],
+    references: [quotes.id],
+  }),
+  product: one(products, {
+    fields: [quoteLines.productId],
+    references: [products.id],
+  }),
+}));
+
+export const salesOrdersRelations = relations(salesOrders, ({ one, many }) => ({
+  company: one(companies, {
+    fields: [salesOrders.companyId],
+    references: [companies.id],
+  }),
+  fiscalYear: one(fiscalYears, {
+    fields: [salesOrders.fiscalYearId],
+    references: [fiscalYears.id],
+  }),
+  customer: one(parties, {
+    fields: [salesOrders.customerId],
+    references: [parties.id],
+  }),
+  quote: one(quotes, {
+    fields: [salesOrders.quoteId],
+    references: [quotes.id],
+  }),
+  createdBy: one(users, {
+    fields: [salesOrders.createdByUserId],
+    references: [users.id],
+  }),
+  lines: many(salesOrderLines),
+}));
+
+export const salesOrderLinesRelations = relations(salesOrderLines, ({ one }) => ({
+  salesOrder: one(salesOrders, {
+    fields: [salesOrderLines.salesOrderId],
+    references: [salesOrders.id],
+  }),
+  product: one(products, {
+    fields: [salesOrderLines.productId],
+    references: [products.id],
+  }),
+}));
+
+export const creditNotesRelations = relations(creditNotes, ({ one, many }) => ({
+  company: one(companies, {
+    fields: [creditNotes.companyId],
+    references: [companies.id],
+  }),
+  fiscalYear: one(fiscalYears, {
+    fields: [creditNotes.fiscalYearId],
+    references: [fiscalYears.id],
+  }),
+  customer: one(parties, {
+    fields: [creditNotes.customerId],
+    references: [parties.id],
+  }),
+  originalInvoice: one(invoices, {
+    fields: [creditNotes.originalInvoiceId],
+    references: [invoices.id],
+  }),
+  journalEntry: one(journalEntries, {
+    fields: [creditNotes.journalEntryId],
+    references: [journalEntries.id],
+  }),
+  createdBy: one(users, {
+    fields: [creditNotes.createdByUserId],
+    references: [users.id],
+  }),
+  lines: many(creditNoteLines),
+}));
+
+export const creditNoteLinesRelations = relations(creditNoteLines, ({ one }) => ({
+  creditNote: one(creditNotes, {
+    fields: [creditNoteLines.creditNoteId],
+    references: [creditNotes.id],
+  }),
+  product: one(products, {
+    fields: [creditNoteLines.productId],
+    references: [products.id],
+  }),
+  account: one(chartOfAccounts, {
+    fields: [creditNoteLines.accountId],
+    references: [chartOfAccounts.id],
+  }),
+}));
+
+export const billsRelations = relations(bills, ({ one, many }) => ({
+  company: one(companies, {
+    fields: [bills.companyId],
+    references: [companies.id],
+  }),
+  fiscalYear: one(fiscalYears, {
+    fields: [bills.fiscalYearId],
+    references: [fiscalYears.id],
+  }),
+  vendor: one(parties, {
+    fields: [bills.vendorId],
+    references: [parties.id],
+  }),
+  journalEntry: one(journalEntries, {
+    fields: [bills.journalEntryId],
+    references: [journalEntries.id],
+  }),
+  createdBy: one(users, {
+    fields: [bills.createdByUserId],
+    references: [users.id],
+  }),
+  lines: many(billLines),
+}));
+
+export const billLinesRelations = relations(billLines, ({ one }) => ({
+  bill: one(bills, {
+    fields: [billLines.billId],
+    references: [bills.id],
+  }),
+  product: one(products, {
+    fields: [billLines.productId],
+    references: [products.id],
+  }),
+  account: one(chartOfAccounts, {
+    fields: [billLines.accountId],
+    references: [chartOfAccounts.id],
+  }),
+}));
+
+export const purchaseOrdersRelations = relations(purchaseOrders, ({ one, many }) => ({
+  company: one(companies, {
+    fields: [purchaseOrders.companyId],
+    references: [companies.id],
+  }),
+  fiscalYear: one(fiscalYears, {
+    fields: [purchaseOrders.fiscalYearId],
+    references: [fiscalYears.id],
+  }),
+  vendor: one(parties, {
+    fields: [purchaseOrders.vendorId],
+    references: [parties.id],
+  }),
+  createdBy: one(users, {
+    fields: [purchaseOrders.createdByUserId],
+    references: [users.id],
+  }),
+  lines: many(purchaseOrderLines),
+}));
+
+export const purchaseOrderLinesRelations = relations(purchaseOrderLines, ({ one }) => ({
+  purchaseOrder: one(purchaseOrders, {
+    fields: [purchaseOrderLines.purchaseOrderId],
+    references: [purchaseOrders.id],
+  }),
+  product: one(products, {
+    fields: [purchaseOrderLines.productId],
+    references: [products.id],
+  }),
+}));
+
+export const debitNotesRelations = relations(debitNotes, ({ one, many }) => ({
+  company: one(companies, {
+    fields: [debitNotes.companyId],
+    references: [companies.id],
+  }),
+  fiscalYear: one(fiscalYears, {
+    fields: [debitNotes.fiscalYearId],
+    references: [fiscalYears.id],
+  }),
+  vendor: one(parties, {
+    fields: [debitNotes.vendorId],
+    references: [parties.id],
+  }),
+  originalBill: one(bills, {
+    fields: [debitNotes.originalBillId],
+    references: [bills.id],
+  }),
+  journalEntry: one(journalEntries, {
+    fields: [debitNotes.journalEntryId],
+    references: [journalEntries.id],
+  }),
+  createdBy: one(users, {
+    fields: [debitNotes.createdByUserId],
+    references: [users.id],
+  }),
+  lines: many(debitNoteLines),
+}));
+
+export const debitNoteLinesRelations = relations(debitNoteLines, ({ one }) => ({
+  debitNote: one(debitNotes, {
+    fields: [debitNoteLines.debitNoteId],
+    references: [debitNotes.id],
+  }),
+  product: one(products, {
+    fields: [debitNoteLines.productId],
+    references: [products.id],
+  }),
+  account: one(chartOfAccounts, {
+    fields: [debitNoteLines.accountId],
+    references: [chartOfAccounts.id],
+  }),
+}));
+
+export const paymentsReceivedRelations = relations(paymentsReceived, ({ one, many }) => ({
+  company: one(companies, {
+    fields: [paymentsReceived.companyId],
+    references: [companies.id],
+  }),
+  fiscalYear: one(fiscalYears, {
+    fields: [paymentsReceived.fiscalYearId],
+    references: [fiscalYears.id],
+  }),
+  customer: one(parties, {
+    fields: [paymentsReceived.customerId],
+    references: [parties.id],
+  }),
+  bankAccount: one(bankAccounts, {
+    fields: [paymentsReceived.bankAccountId],
+    references: [bankAccounts.id],
+  }),
+  journalEntry: one(journalEntries, {
+    fields: [paymentsReceived.journalEntryId],
+    references: [journalEntries.id],
+  }),
+  createdBy: one(users, {
+    fields: [paymentsReceived.createdByUserId],
+    references: [users.id],
+  }),
+  allocations: many(paymentAllocations),
+}));
+
+export const paymentAllocationsRelations = relations(paymentAllocations, ({ one }) => ({
+  paymentReceived: one(paymentsReceived, {
+    fields: [paymentAllocations.paymentReceivedId],
+    references: [paymentsReceived.id],
+  }),
+  invoice: one(invoices, {
+    fields: [paymentAllocations.invoiceId],
+    references: [invoices.id],
+  }),
+}));
+
+export const paymentsMadeRelations = relations(paymentsMade, ({ one, many }) => ({
+  company: one(companies, {
+    fields: [paymentsMade.companyId],
+    references: [companies.id],
+  }),
+  fiscalYear: one(fiscalYears, {
+    fields: [paymentsMade.fiscalYearId],
+    references: [fiscalYears.id],
+  }),
+  vendor: one(parties, {
+    fields: [paymentsMade.vendorId],
+    references: [parties.id],
+  }),
+  bankAccount: one(bankAccounts, {
+    fields: [paymentsMade.bankAccountId],
+    references: [bankAccounts.id],
+  }),
+  journalEntry: one(journalEntries, {
+    fields: [paymentsMade.journalEntryId],
+    references: [journalEntries.id],
+  }),
+  createdBy: one(users, {
+    fields: [paymentsMade.createdByUserId],
+    references: [users.id],
+  }),
+  allocations: many(paymentMadeAllocations),
+}));
+
+export const paymentMadeAllocationsRelations = relations(paymentMadeAllocations, ({ one }) => ({
+  paymentMade: one(paymentsMade, {
+    fields: [paymentMadeAllocations.paymentMadeId],
+    references: [paymentsMade.id],
+  }),
+  bill: one(bills, {
+    fields: [paymentMadeAllocations.billId],
+    references: [bills.id],
+  }),
+}));
+
+export const bankReconciliationsRelations = relations(bankReconciliations, ({ one, many }) => ({
+  company: one(companies, {
+    fields: [bankReconciliations.companyId],
+    references: [companies.id],
+  }),
+  bankAccount: one(bankAccounts, {
+    fields: [bankReconciliations.bankAccountId],
+    references: [bankAccounts.id],
+  }),
+  reconciledBy: one(users, {
+    fields: [bankReconciliations.reconciledByUserId],
+    references: [users.id],
+  }),
+  lines: many(bankReconciliationLines),
+}));
+
+export const bankReconciliationLinesRelations = relations(bankReconciliationLines, ({ one }) => ({
+  reconciliation: one(bankReconciliations, {
+    fields: [bankReconciliationLines.reconciliationId],
+    references: [bankReconciliations.id],
+  }),
+  journalEntry: one(journalEntries, {
+    fields: [bankReconciliationLines.journalEntryId],
+    references: [journalEntries.id],
+  }),
+}));
+
 // ==================== ZOD SCHEMAS ====================
 
 export const insertUserSchema = createInsertSchema(users).omit({
@@ -1332,6 +2073,106 @@ export const insertExchangeRateSchema = createInsertSchema(exchangeRates).omit({
   updatedAt: true,
 });
 
+export const insertProductSchema = createInsertSchema(products).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertQuoteSchema = createInsertSchema(quotes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertQuoteLineSchema = createInsertSchema(quoteLines).omit({
+  id: true,
+});
+
+export const insertSalesOrderSchema = createInsertSchema(salesOrders).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertSalesOrderLineSchema = createInsertSchema(salesOrderLines).omit({
+  id: true,
+});
+
+export const insertCreditNoteSchema = createInsertSchema(creditNotes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertCreditNoteLineSchema = createInsertSchema(creditNoteLines).omit({
+  id: true,
+});
+
+export const insertBillSchema = createInsertSchema(bills).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertBillLineSchema = createInsertSchema(billLines).omit({
+  id: true,
+});
+
+export const insertPurchaseOrderSchema = createInsertSchema(purchaseOrders).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertPurchaseOrderLineSchema = createInsertSchema(purchaseOrderLines).omit({
+  id: true,
+});
+
+export const insertDebitNoteSchema = createInsertSchema(debitNotes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertDebitNoteLineSchema = createInsertSchema(debitNoteLines).omit({
+  id: true,
+});
+
+export const insertPaymentReceivedSchema = createInsertSchema(paymentsReceived).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertPaymentAllocationSchema = createInsertSchema(paymentAllocations).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertPaymentMadeSchema = createInsertSchema(paymentsMade).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertPaymentMadeAllocationSchema = createInsertSchema(paymentMadeAllocations).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertBankReconciliationSchema = createInsertSchema(bankReconciliations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  reconciledAt: true,
+});
+
+export const insertBankReconciliationLineSchema = createInsertSchema(bankReconciliationLines).omit({
+  id: true,
+  reconciledAt: true,
+});
+
 // ==================== TYPES ====================
 
 export type User = typeof users.$inferSelect;
@@ -1389,3 +2230,41 @@ export type Currency = typeof currencies.$inferSelect;
 export type InsertCurrency = z.infer<typeof insertCurrencySchema>;
 export type ExchangeRate = typeof exchangeRates.$inferSelect;
 export type InsertExchangeRate = z.infer<typeof insertExchangeRateSchema>;
+export type Product = typeof products.$inferSelect;
+export type InsertProduct = z.infer<typeof insertProductSchema>;
+export type Quote = typeof quotes.$inferSelect;
+export type InsertQuote = z.infer<typeof insertQuoteSchema>;
+export type QuoteLine = typeof quoteLines.$inferSelect;
+export type InsertQuoteLine = z.infer<typeof insertQuoteLineSchema>;
+export type SalesOrder = typeof salesOrders.$inferSelect;
+export type InsertSalesOrder = z.infer<typeof insertSalesOrderSchema>;
+export type SalesOrderLine = typeof salesOrderLines.$inferSelect;
+export type InsertSalesOrderLine = z.infer<typeof insertSalesOrderLineSchema>;
+export type CreditNote = typeof creditNotes.$inferSelect;
+export type InsertCreditNote = z.infer<typeof insertCreditNoteSchema>;
+export type CreditNoteLine = typeof creditNoteLines.$inferSelect;
+export type InsertCreditNoteLine = z.infer<typeof insertCreditNoteLineSchema>;
+export type Bill = typeof bills.$inferSelect;
+export type InsertBill = z.infer<typeof insertBillSchema>;
+export type BillLine = typeof billLines.$inferSelect;
+export type InsertBillLine = z.infer<typeof insertBillLineSchema>;
+export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
+export type InsertPurchaseOrder = z.infer<typeof insertPurchaseOrderSchema>;
+export type PurchaseOrderLine = typeof purchaseOrderLines.$inferSelect;
+export type InsertPurchaseOrderLine = z.infer<typeof insertPurchaseOrderLineSchema>;
+export type DebitNote = typeof debitNotes.$inferSelect;
+export type InsertDebitNote = z.infer<typeof insertDebitNoteSchema>;
+export type DebitNoteLine = typeof debitNoteLines.$inferSelect;
+export type InsertDebitNoteLine = z.infer<typeof insertDebitNoteLineSchema>;
+export type PaymentReceived = typeof paymentsReceived.$inferSelect;
+export type InsertPaymentReceived = z.infer<typeof insertPaymentReceivedSchema>;
+export type PaymentAllocation = typeof paymentAllocations.$inferSelect;
+export type InsertPaymentAllocation = z.infer<typeof insertPaymentAllocationSchema>;
+export type PaymentMade = typeof paymentsMade.$inferSelect;
+export type InsertPaymentMade = z.infer<typeof insertPaymentMadeSchema>;
+export type PaymentMadeAllocation = typeof paymentMadeAllocations.$inferSelect;
+export type InsertPaymentMadeAllocation = z.infer<typeof insertPaymentMadeAllocationSchema>;
+export type BankReconciliation = typeof bankReconciliations.$inferSelect;
+export type InsertBankReconciliation = z.infer<typeof insertBankReconciliationSchema>;
+export type BankReconciliationLine = typeof bankReconciliationLines.$inferSelect;
+export type InsertBankReconciliationLine = z.infer<typeof insertBankReconciliationLineSchema>;

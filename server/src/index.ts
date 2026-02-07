@@ -27,6 +27,18 @@ import coaImportRoutes from './routes/coaImport';
 import userManagementRoutes from './routes/userManagement';
 import invoicesRoutes from './routes/invoices';
 import expensesRoutes from './routes/expenses';
+import productsRoutes from './routes/products';
+import bankAccountsRoutes from './routes/bankAccounts';
+import costCentersRoutes from './routes/costCenters';
+import quotesRoutes from './routes/quotes';
+import salesOrdersRoutes from './routes/salesOrders';
+import creditNotesRoutes from './routes/creditNotes';
+import billsRoutes from './routes/bills';
+import purchaseOrdersRoutes from './routes/purchaseOrders';
+import debitNotesRoutes from './routes/debitNotes';
+import paymentsReceivedRoutes from './routes/paymentsReceived';
+import paymentsMadeRoutes from './routes/paymentsMade';
+import bankReconciliationRoutes from './routes/bankReconciliation';
 
 const { Pool } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -85,6 +97,18 @@ app.use('/api/coa-import', coaImportRoutes);
 app.use('/api/users', userManagementRoutes);
 app.use('/api/invoices', invoicesRoutes);
 app.use('/api/expenses', expensesRoutes);
+app.use('/api/products', productsRoutes);
+app.use('/api/bank-accounts', bankAccountsRoutes);
+app.use('/api/cost-centers', costCentersRoutes);
+app.use('/api/quotes', quotesRoutes);
+app.use('/api/sales-orders', salesOrdersRoutes);
+app.use('/api/credit-notes', creditNotesRoutes);
+app.use('/api/bills', billsRoutes);
+app.use('/api/purchase-orders', purchaseOrdersRoutes);
+app.use('/api/debit-notes', debitNotesRoutes);
+app.use('/api/payments-received', paymentsReceivedRoutes);
+app.use('/api/payments-made', paymentsMadeRoutes);
+app.use('/api/bank-reconciliation', bankReconciliationRoutes);
 
 // Health check (basic - always returns ok for Railway health checks)
 app.get('/api/health', (_req: Request, res: Response) => {
