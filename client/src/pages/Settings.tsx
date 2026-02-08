@@ -26,6 +26,8 @@ import {
   DollarSign,
   Palette,
 } from 'lucide-react';
+import { GstinInput } from '@/components/ui/gstin-input';
+import { getShortAddress, type GstinDetails } from '@/lib/gst-utils';
 import CurrencySettings from '@/components/accounting/CurrencySettings';
 import LogoUpload from '@/components/settings/LogoUpload';
 import { TemplateGrid } from '@/components/document/TemplatePreview';
@@ -295,11 +297,27 @@ export default function Settings() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="gstin">GSTIN</Label>
-                      <Input
-                        id="gstin"
+                      <GstinInput
                         value={companyData.gstin}
-                        onChange={(e) => setCompanyData({ ...companyData, gstin: e.target.value.toUpperCase() })}
-                        maxLength={15}
+                        onChange={(value) => setCompanyData({ ...companyData, gstin: value })}
+                        onLookupSuccess={(details: GstinDetails) => {
+                          // Auto-fill fields from GSTIN lookup
+                          if (details.legalName && !companyData.legalName) {
+                            setCompanyData(prev => ({ ...prev, legalName: details.legalName }));
+                          }
+                          if (!companyData.address) {
+                            setCompanyData(prev => ({ ...prev, address: getShortAddress(details) }));
+                          }
+                          if (details.address.city && !companyData.city) {
+                            setCompanyData(prev => ({ ...prev, city: details.address.city }));
+                          }
+                          if (details.address.state && !companyData.state) {
+                            setCompanyData(prev => ({ ...prev, state: details.address.state }));
+                          }
+                          if (details.address.pincode && !companyData.pincode) {
+                            setCompanyData(prev => ({ ...prev, pincode: details.address.pincode }));
+                          }
+                        }}
                       />
                     </div>
                     <div className="space-y-2">
@@ -567,12 +585,28 @@ export default function Settings() {
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="gstGstin">GSTIN *</Label>
-                      <Input
-                        id="gstGstin"
+                      <GstinInput
                         value={gstData.gstin}
-                        onChange={(e) => setGstData({ ...gstData, gstin: e.target.value.toUpperCase() })}
-                        maxLength={15}
-                        required
+                        onChange={(value) => setGstData({ ...gstData, gstin: value })}
+                        onLookupSuccess={(details: GstinDetails) => {
+                          // Auto-fill GST config fields from lookup
+                          if (details.legalName) {
+                            setGstData(prev => ({ ...prev, legalName: details.legalName }));
+                          }
+                          if (details.tradeName) {
+                            setGstData(prev => ({ ...prev, tradeName: details.tradeName || '' }));
+                          }
+                          // Map registration type
+                          const regTypeMap: Record<string, string> = {
+                            'Regular': 'regular',
+                            'Composition': 'composition',
+                            'Casual': 'casual',
+                            'Non-Resident': 'non_resident',
+                            'ISD': 'isd',
+                          };
+                          const mappedType = regTypeMap[details.registrationType] || 'regular';
+                          setGstData(prev => ({ ...prev, registrationType: mappedType }));
+                        }}
                       />
                     </div>
                     <div className="space-y-2">

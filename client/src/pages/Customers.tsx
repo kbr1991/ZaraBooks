@@ -40,6 +40,8 @@ import {
   MapPin,
   TrendingUp,
 } from 'lucide-react';
+import { GstinInput } from '@/components/ui/gstin-input';
+import { getShortAddress, type GstinDetails } from '@/lib/gst-utils';
 
 const customerSchema = z.object({
   name: z.string().min(1, 'Customer name is required'),
@@ -270,7 +272,32 @@ export default function Customers() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="gstin">GSTIN</Label>
-                  <Input {...form.register('gstin')} placeholder="22AAAAA0000A1Z5" />
+                  <GstinInput
+                    value={form.watch('gstin') || ''}
+                    onChange={(value) => form.setValue('gstin', value)}
+                    onLookupSuccess={(details: GstinDetails) => {
+                      // Auto-fill fields from GSTIN lookup
+                      if (details.legalName && !form.getValues('name')) {
+                        form.setValue('name', details.legalName);
+                      }
+                      if (details.tradeName && !form.getValues('displayName')) {
+                        form.setValue('displayName', details.tradeName);
+                      }
+                      if (!form.getValues('address')) {
+                        form.setValue('address', getShortAddress(details));
+                      }
+                      if (details.address.city && !form.getValues('city')) {
+                        form.setValue('city', details.address.city);
+                      }
+                      if (details.address.state && !form.getValues('state')) {
+                        form.setValue('state', details.address.state);
+                      }
+                      if (details.address.pincode && !form.getValues('pincode')) {
+                        form.setValue('pincode', details.address.pincode);
+                      }
+                    }}
+                    error={form.formState.errors.gstin?.message}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="pan">PAN</Label>

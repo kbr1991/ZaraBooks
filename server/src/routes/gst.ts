@@ -6,8 +6,54 @@ import {
 import { eq, and, asc, desc, sql, gte, lte } from 'drizzle-orm';
 import { requireCompany, AuthenticatedRequest } from '../middleware/auth';
 import { nicApiService } from '../services/nicApi';
+import { gstinLookupService, validateGstinFormat } from '../services/gstinLookup';
 
 const router = Router();
+
+// ==================== GSTIN LOOKUP ====================
+
+// Lookup GSTIN details from external API
+router.get('/gstin/lookup/:gstin', requireCompany, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { gstin } = req.params;
+
+    // Validate GSTIN format
+    if (!validateGstinFormat(gstin)) {
+      return res.status(400).json({ error: 'Invalid GSTIN format. GSTIN must be 15 characters.' });
+    }
+
+    // Lookup GSTIN details
+    const details = await gstinLookupService.lookup(gstin);
+
+    res.json(details);
+  } catch (error: any) {
+    console.error('GSTIN lookup error:', error);
+
+    // Handle specific error messages
+    if (error.message?.includes('not found')) {
+      return res.status(404).json({ error: 'GSTIN not found in GST portal' });
+    }
+    if (error.message?.includes('not set') || error.message?.includes('not configured')) {
+      return res.status(503).json({ error: 'GSTIN lookup service not configured' });
+    }
+    if (error.message?.includes('unavailable')) {
+      return res.status(503).json({ error: 'Lookup service temporarily unavailable' });
+    }
+
+    res.status(500).json({ error: error.message || 'Failed to lookup GSTIN' });
+  }
+});
+
+// Get state codes mapping
+router.get('/gstin/state-codes', async (req, res) => {
+  try {
+    const stateCodes = gstinLookupService.getStateCodes();
+    res.json(stateCodes);
+  } catch (error) {
+    console.error('Get state codes error:', error);
+    res.status(500).json({ error: 'Failed to get state codes' });
+  }
+});
 
 // ==================== GST CONFIG ====================
 
