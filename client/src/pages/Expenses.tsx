@@ -42,6 +42,7 @@ import {
   XCircle,
   TrendingUp,
   Wallet,
+  Trash2,
 } from 'lucide-react';
 
 interface Expense {
@@ -163,6 +164,28 @@ export default function Expenses() {
     },
     onError: () => {
       toast({ title: 'Failed to approve expense', variant: 'destructive' });
+    },
+  });
+
+  // Delete expense mutation
+  const deleteExpenseMutation = useMutation({
+    mutationFn: async (expenseId: string) => {
+      const response = await fetch(`/api/expenses/${expenseId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to delete expense');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      toast({ title: 'Expense deleted successfully' });
+    },
+    onError: (error: Error) => {
+      toast({ title: error.message, variant: 'destructive' });
     },
   });
 
@@ -381,17 +404,31 @@ export default function Expenses() {
                           <Eye className="h-4 w-4" />
                         </Button>
                         {expense.status === 'pending' && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => approveExpenseMutation.mutate(expense.id)}
-                          >
-                            <CheckCircle className="h-4 w-4 text-green-500" />
-                          </Button>
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => approveExpenseMutation.mutate(expense.id)}
+                            >
+                              <CheckCircle className="h-4 w-4 text-green-500" />
+                            </Button>
+                            <Button variant="ghost" size="icon">
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                if (confirm('Are you sure you want to delete this expense?')) {
+                                  deleteExpenseMutation.mutate(expense.id);
+                                }
+                              }}
+                              disabled={deleteExpenseMutation.isPending}
+                            >
+                              <Trash2 className="h-4 w-4 text-red-500" />
+                            </Button>
+                          </>
                         )}
-                        <Button variant="ghost" size="icon">
-                          <Edit className="h-4 w-4" />
-                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>

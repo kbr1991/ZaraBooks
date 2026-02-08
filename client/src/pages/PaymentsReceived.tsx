@@ -40,6 +40,7 @@ import {
   Banknote,
   Building2,
   FileText,
+  Trash2,
 } from 'lucide-react';
 
 interface PaymentReceived {
@@ -175,6 +176,29 @@ export default function PaymentsReceived() {
     },
     onError: () => {
       toast({ title: 'Failed to record payment', variant: 'destructive' });
+    },
+  });
+
+  // Delete payment mutation
+  const deletePaymentMutation = useMutation({
+    mutationFn: async (paymentId: string) => {
+      const response = await fetch(`/api/payments-received/${paymentId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to delete payment');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payments-received'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      toast({ title: 'Payment deleted and allocations reversed' });
+    },
+    onError: (error: Error) => {
+      toast({ title: error.message, variant: 'destructive' });
     },
   });
 
@@ -390,13 +414,27 @@ export default function PaymentsReceived() {
                     <TableCell>{getPaymentModeBadge(payment.paymentMode)}</TableCell>
                     <TableCell>{payment.depositAccountName || '-'}</TableCell>
                     <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setSelectedPayment(payment)}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setSelectedPayment(payment)}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            if (confirm('Are you sure you want to delete this payment? This will reverse invoice allocations.')) {
+                              deletePaymentMutation.mutate(payment.id);
+                            }
+                          }}
+                          disabled={deletePaymentMutation.isPending}
+                        >
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

@@ -499,8 +499,14 @@ router.delete('/:id', requireCompany, async (req: AuthenticatedRequest, res) => 
       return res.status(404).json({ error: 'Bill not found' });
     }
 
-    if (bill.status !== 'draft') {
-      return res.status(400).json({ error: 'Only draft bills can be deleted' });
+    if (!['draft', 'pending'].includes(bill.status)) {
+      return res.status(400).json({ error: 'Only draft or pending bills can be deleted' });
+    }
+
+    // If bill has a journal entry, delete it first
+    if (bill.journalEntryId) {
+      await db.delete(journalEntryLines).where(eq(journalEntryLines.journalEntryId, bill.journalEntryId));
+      await db.delete(journalEntries).where(eq(journalEntries.id, bill.journalEntryId));
     }
 
     await db.delete(billLines).where(eq(billLines.billId, id));

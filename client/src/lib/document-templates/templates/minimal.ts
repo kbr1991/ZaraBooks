@@ -12,25 +12,35 @@ export const minimalTemplate: TemplateFunction = (data: DocumentData): string =>
     ? `<img src="${data.company.logoUrl}" alt="${data.company.name}" style="max-height: 40px; max-width: 150px; object-fit: contain; opacity: 0.9;" />`
     : '';
 
-  const linesHtml = data.items.map(item => `
-    <tr>
-      <td style="padding: 16px 0; border-bottom: 1px solid #f3f4f6;">
-        <div style="font-weight: 500;">${item.description || ''}</div>
-        ${item.hsnSac ? `<div style="font-size: 11px; color: #9ca3af; margin-top: 2px;">HSN/SAC: ${item.hsnSac}</div>` : ''}
-      </td>
-      <td style="padding: 16px 0; border-bottom: 1px solid #f3f4f6; text-align: center; color: #6b7280;">${item.quantity}</td>
-      <td style="padding: 16px 0; border-bottom: 1px solid #f3f4f6; text-align: right; color: #6b7280;">${formatCurrencyValue(item.rate)}</td>
-      <td style="padding: 16px 0; border-bottom: 1px solid #f3f4f6; text-align: center; color: #9ca3af;">${item.taxRate || 0}%</td>
-      <td style="padding: 16px 0; border-bottom: 1px solid #f3f4f6; text-align: right; font-weight: 500;">${formatCurrencyValue(item.amount)}</td>
-    </tr>
-  `).join('');
+  const hasItems = data.items && data.items.length > 0 && data.items.some(item => item.description);
+
+  const linesHtml = hasItems
+    ? data.items.filter(item => item.description).map(item => `
+      <tr>
+        <td style="padding: 16px 0; border-bottom: 1px solid #f3f4f6;">
+          <div style="font-weight: 500;">${item.description}</div>
+          ${item.hsnSac ? `<div style="font-size: 11px; color: #9ca3af; margin-top: 2px;">HSN/SAC: ${item.hsnSac}</div>` : ''}
+        </td>
+        <td style="padding: 16px 0; border-bottom: 1px solid #f3f4f6; text-align: center; color: #6b7280;">${item.quantity}</td>
+        <td style="padding: 16px 0; border-bottom: 1px solid #f3f4f6; text-align: right; color: #6b7280;">${formatCurrencyValue(item.rate)}</td>
+        <td style="padding: 16px 0; border-bottom: 1px solid #f3f4f6; text-align: center; color: #9ca3af;">${item.taxRate || 0}%</td>
+        <td style="padding: 16px 0; border-bottom: 1px solid #f3f4f6; text-align: right; font-weight: 500;">${formatCurrencyValue(item.amount)}</td>
+      </tr>
+    `).join('')
+    : '';
+
+  // Helper to clean address parts (remove trailing commas, extra spaces)
+  const cleanAddressPart = (part: string | undefined): string => {
+    if (!part) return '';
+    return part.replace(/,+\s*$/, '').replace(/\s+/g, ' ').trim();
+  };
 
   const customerAddress = [
     data.customer.address,
     data.customer.city,
     data.customer.state,
     data.customer.pincode,
-  ].filter(Boolean).join(', ');
+  ].map(cleanAddressPart).filter(Boolean).join(', ');
 
   return `
     <!DOCTYPE html>
@@ -191,6 +201,10 @@ export const minimalTemplate: TemplateFunction = (data: DocumentData): string =>
           display: flex;
           gap: 6px;
         }
+        @page {
+          size: A4;
+          margin: 10mm 15mm;
+        }
         @media print {
           body { padding: 30px; }
           button, .no-print { display: none !important; }
@@ -261,14 +275,14 @@ export const minimalTemplate: TemplateFunction = (data: DocumentData): string =>
         </div>
       </div>
 
-      ${data.notes ? `
+      ${data.notes && data.notes.trim() ? `
       <div class="notes-section">
         <div class="notes-label">Notes</div>
         <p>${data.notes}</p>
       </div>
       ` : ''}
 
-      ${data.terms ? `
+      ${data.terms && data.terms.trim() ? `
       <div class="notes-section" style="margin-top: 20px;">
         <div class="notes-label">Terms</div>
         <p>${data.terms}</p>

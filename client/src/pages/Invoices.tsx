@@ -230,15 +230,20 @@ export default function Invoices() {
           gstin: invoice.customer?.gstin,
           email: invoice.customer?.email,
         },
-        items: invoiceLines.map((line: any) => ({
-          description: line.description || '',
-          hsnSac: line.hsnSacCode,
-          quantity: parseFloat(line.quantity) || 1,
-          rate: parseFloat(line.unitPrice) || 0,
-          amount: parseFloat(line.amount) || 0,
-          taxRate: parseFloat(line.taxRate) || 0,
-          taxAmount: parseFloat(line.taxAmount) || 0,
-        })),
+        items: invoiceLines.map((line: any) => {
+          const qty = parseFloat(line.quantity) || 1;
+          const rate = parseFloat(line.unitPrice) || 0;
+          const lineAmount = qty * rate; // Pre-tax amount
+          return {
+            description: line.description || '',
+            hsnSac: line.hsnSacCode || '',
+            quantity: qty,
+            rate: rate,
+            amount: lineAmount,
+            taxRate: parseFloat(line.taxRate) || 0,
+            taxAmount: parseFloat(line.taxAmount) || 0,
+          };
+        }),
         subtotal,
         taxBreakdown: { cgst, sgst, igst },
         totalAmount: total,
@@ -428,6 +433,28 @@ export default function Invoices() {
     },
     onError: () => {
       toast({ title: 'Failed to update invoice', variant: 'destructive' });
+    },
+  });
+
+  // Delete invoice mutation
+  const deleteInvoiceMutation = useMutation({
+    mutationFn: async (invoiceId: string) => {
+      const response = await fetch(`/api/invoices/${invoiceId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to delete invoice');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      toast({ title: 'Invoice deleted successfully' });
+    },
+    onError: (error: Error) => {
+      toast({ title: error.message, variant: 'destructive' });
     },
   });
 
@@ -638,6 +665,18 @@ export default function Invoices() {
                               onClick={() => handleEditInvoice(invoice)}
                             >
                               <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                if (confirm('Are you sure you want to delete this invoice?')) {
+                                  deleteInvoiceMutation.mutate(invoice.id);
+                                }
+                              }}
+                              disabled={deleteInvoiceMutation.isPending}
+                            >
+                              <Trash2 className="h-4 w-4 text-red-500" />
                             </Button>
                           </>
                         )}

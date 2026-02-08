@@ -46,15 +46,15 @@ import {
 
 interface PurchaseOrder {
   id: string;
-  poNumber: string;
-  poDate: string;
+  orderNumber: string;
+  orderDate: string;
   expectedDate: string;
   vendorId: string;
   vendorName: string;
   subtotal: string;
   taxAmount: string;
   totalAmount: string;
-  status: 'draft' | 'issued' | 'closed';
+  status: 'draft' | 'issued' | 'acknowledged' | 'received' | 'cancelled';
   items: PurchaseOrderItem[];
 }
 
@@ -85,7 +85,7 @@ export default function PurchaseOrders() {
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [formData, setFormData] = useState({
     vendorId: '',
-    poDate: new Date().toISOString().split('T')[0],
+    orderDate: new Date().toISOString().split('T')[0],
     expectedDate: '',
     items: [{ description: '', quantity: 1, rate: '', hsnSac: '', gstRate: '18' }],
   });
@@ -178,10 +178,29 @@ export default function PurchaseOrders() {
     },
   });
 
+  // Delete PO mutation
+  const deletePOMutation = useMutation({
+    mutationFn: async (poId: string) => {
+      const response = await fetch(`/api/purchase-orders/${poId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Failed to delete purchase order');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      toast({ title: 'Purchase order deleted' });
+    },
+    onError: () => {
+      toast({ title: 'Failed to delete purchase order', variant: 'destructive' });
+    },
+  });
+
   const resetForm = () => {
     setFormData({
       vendorId: '',
-      poDate: new Date().toISOString().split('T')[0],
+      orderDate: new Date().toISOString().split('T')[0],
       expectedDate: '',
       items: [{ description: '', quantity: 1, rate: '', hsnSac: '', gstRate: '18' }],
     });
@@ -201,7 +220,7 @@ export default function PurchaseOrders() {
   };
 
   const filteredPOs = purchaseOrders?.filter((po) =>
-    po.poNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    po.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
     po.vendorName.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -362,11 +381,11 @@ export default function PurchaseOrders() {
                 {filteredPOs.map((po) => (
                   <TableRow key={po.id}>
                     <TableCell className="font-mono font-medium">
-                      {po.poNumber}
+                      {po.orderNumber}
                     </TableCell>
                     <TableCell>{po.vendorName}</TableCell>
                     <TableCell>
-                      {new Date(po.poDate).toLocaleDateString()}
+                      {new Date(po.orderDate).toLocaleDateString()}
                     </TableCell>
                     <TableCell>
                       {new Date(po.expectedDate).toLocaleDateString()}
@@ -397,7 +416,15 @@ export default function PurchaseOrders() {
                             <Button variant="ghost" size="icon">
                               <Edit className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="icon">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                if (confirm('Are you sure you want to delete this purchase order?')) {
+                                  deletePOMutation.mutate(po.id);
+                                }
+                              }}
+                            >
                               <Trash2 className="h-4 w-4 text-red-500" />
                             </Button>
                           </>
@@ -455,7 +482,7 @@ export default function PurchaseOrders() {
                 <Label>PO Date</Label>
                 <Input
                   type="date"
-                  value={formData.poDate}
+                  value={formData.orderDate}
                   onChange={(e) => setFormData({ ...formData, poDate: e.target.value })}
                 />
               </div>
@@ -597,7 +624,7 @@ export default function PurchaseOrders() {
       <Dialog open={!!selectedPO} onOpenChange={() => setSelectedPO(null)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Purchase Order {selectedPO?.poNumber}</DialogTitle>
+            <DialogTitle>Purchase Order {selectedPO?.orderNumber}</DialogTitle>
           </DialogHeader>
           {selectedPO && (
             <div className="space-y-4">
@@ -612,7 +639,7 @@ export default function PurchaseOrders() {
                 </div>
                 <div>
                   <Label className="text-muted-foreground">PO Date</Label>
-                  <p>{new Date(selectedPO.poDate).toLocaleDateString()}</p>
+                  <p>{new Date(selectedPO.orderDate).toLocaleDateString()}</p>
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Expected Date</Label>

@@ -39,6 +39,7 @@ import {
   Clock,
   XCircle,
   Receipt,
+  Trash2,
 } from 'lucide-react';
 
 interface DebitNote {
@@ -208,6 +209,28 @@ export default function DebitNotes() {
     },
     onError: () => {
       toast({ title: 'Failed to apply debit note', variant: 'destructive' });
+    },
+  });
+
+  // Delete debit note mutation
+  const deleteDebitNoteMutation = useMutation({
+    mutationFn: async (debitNoteId: string) => {
+      const response = await fetch(`/api/debit-notes/${debitNoteId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to delete debit note');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['debit-notes'] });
+      toast({ title: 'Debit note deleted successfully' });
+    },
+    onError: (error: Error) => {
+      toast({ title: error.message, variant: 'destructive' });
     },
   });
 
@@ -442,6 +465,20 @@ export default function DebitNotes() {
                             title="Apply to Bill"
                           >
                             <CheckCircle className="h-4 w-4 text-green-500" />
+                          </Button>
+                        )}
+                        {debitNote.status === 'draft' && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              if (confirm('Are you sure you want to delete this debit note?')) {
+                                deleteDebitNoteMutation.mutate(debitNote.id);
+                              }
+                            }}
+                            disabled={deleteDebitNoteMutation.isPending}
+                          >
+                            <Trash2 className="h-4 w-4 text-red-500" />
                           </Button>
                         )}
                       </div>

@@ -39,6 +39,7 @@ import {
   Clock,
   XCircle,
   Receipt,
+  Trash2,
 } from 'lucide-react';
 
 interface CreditNote {
@@ -207,6 +208,28 @@ export default function CreditNotes() {
     },
     onError: () => {
       toast({ title: 'Failed to apply credit note', variant: 'destructive' });
+    },
+  });
+
+  // Delete credit note mutation
+  const deleteCreditNoteMutation = useMutation({
+    mutationFn: async (creditNoteId: string) => {
+      const response = await fetch(`/api/credit-notes/${creditNoteId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to delete credit note');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['credit-notes'] });
+      toast({ title: 'Credit note deleted successfully' });
+    },
+    onError: (error: Error) => {
+      toast({ title: error.message, variant: 'destructive' });
     },
   });
 
@@ -441,6 +464,20 @@ export default function CreditNotes() {
                             title="Apply to Invoice"
                           >
                             <CheckCircle className="h-4 w-4 text-green-500" />
+                          </Button>
+                        )}
+                        {creditNote.status === 'draft' && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              if (confirm('Are you sure you want to delete this credit note?')) {
+                                deleteCreditNoteMutation.mutate(creditNote.id);
+                              }
+                            }}
+                            disabled={deleteCreditNoteMutation.isPending}
+                          >
+                            <Trash2 className="h-4 w-4 text-red-500" />
                           </Button>
                         )}
                       </div>

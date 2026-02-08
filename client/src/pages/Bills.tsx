@@ -171,6 +171,28 @@ export default function Bills() {
     },
   });
 
+  // Delete bill mutation
+  const deleteBillMutation = useMutation({
+    mutationFn: async (billId: string) => {
+      const response = await fetch(`/api/bills/${billId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to delete bill');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bills'] });
+      toast({ title: 'Bill deleted successfully' });
+    },
+    onError: (error: Error) => {
+      toast({ title: error.message, variant: 'destructive' });
+    },
+  });
+
   const resetForm = () => {
     setFormData({
       vendorId: '',
@@ -407,12 +429,21 @@ export default function Bills() {
                             <Wallet className="h-4 w-4 text-green-500" />
                           </Button>
                         )}
-                        {bill.status === 'draft' && (
+                        {['draft', 'open'].includes(bill.status) && (
                           <>
                             <Button variant="ghost" size="icon">
                               <Edit className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="icon">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                if (confirm('Are you sure you want to delete this bill?')) {
+                                  deleteBillMutation.mutate(bill.id);
+                                }
+                              }}
+                              disabled={deleteBillMutation.isPending}
+                            >
                               <Trash2 className="h-4 w-4 text-red-500" />
                             </Button>
                           </>

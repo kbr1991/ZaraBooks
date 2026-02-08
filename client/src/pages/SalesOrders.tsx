@@ -193,6 +193,28 @@ export default function SalesOrders() {
     },
   });
 
+  // Delete sales order mutation
+  const deleteOrderMutation = useMutation({
+    mutationFn: async (orderId: string) => {
+      const response = await fetch(`/api/sales-orders/${orderId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to delete sales order');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sales-orders'] });
+      toast({ title: 'Sales order deleted successfully' });
+    },
+    onError: (error: Error) => {
+      toast({ title: error.message, variant: 'destructive' });
+    },
+  });
+
   // Handle opening template selector for download
   const handleOpenTemplateSelector = (orderId: string) => {
     setPendingDownloadOrderId(orderId);
@@ -251,15 +273,20 @@ export default function SalesOrders() {
           gstin: order.customer?.gstin,
           email: order.customer?.email,
         },
-        items: orderLines.map((line: any) => ({
-          description: line.description || '',
-          hsnSac: line.hsnSacCode,
-          quantity: parseFloat(line.quantity) || 1,
-          rate: parseFloat(line.unitPrice) || 0,
-          amount: parseFloat(line.amount) || 0,
-          taxRate: parseFloat(line.taxRate) || 0,
-          taxAmount: parseFloat(line.taxAmount) || 0,
-        })),
+        items: orderLines.map((line: any) => {
+          const qty = parseFloat(line.quantity) || 1;
+          const rate = parseFloat(line.unitPrice) || 0;
+          const lineAmount = qty * rate; // Pre-tax amount
+          return {
+            description: line.description || '',
+            hsnSac: line.hsnSacCode || '',
+            quantity: qty,
+            rate: rate,
+            amount: lineAmount,
+            taxRate: parseFloat(line.taxRate) || 0,
+            taxAmount: parseFloat(line.taxAmount) || 0,
+          };
+        }),
         subtotal,
         taxBreakdown: { cgst, sgst, igst },
         totalAmount: total,
@@ -543,8 +570,17 @@ export default function SalesOrders() {
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                        {order.status === 'open' && (
-                          <Button variant="ghost" size="icon">
+                        {order.status === 'draft' && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              if (confirm('Are you sure you want to delete this sales order?')) {
+                                deleteOrderMutation.mutate(order.id);
+                              }
+                            }}
+                            disabled={deleteOrderMutation.isPending}
+                          >
                             <Trash2 className="h-4 w-4 text-red-500" />
                           </Button>
                         )}

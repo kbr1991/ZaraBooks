@@ -12,30 +12,40 @@ export const modernTemplate: TemplateFunction = (data: DocumentData): string => 
     ? `<img src="${data.company.logoUrl}" alt="${data.company.name}" style="max-height: 50px; max-width: 180px; object-fit: contain;" />`
     : '';
 
-  const linesHtml = data.items.map((item, index) => `
-    <tr style="background: ${index % 2 === 0 ? '#f0f9ff' : 'white'};">
-      <td style="padding: 14px 16px; border-bottom: 1px solid #e0f2fe;">${item.description || ''}</td>
-      <td style="padding: 14px 16px; border-bottom: 1px solid #e0f2fe; text-align: center; color: #64748b;">${item.hsnSac || '-'}</td>
-      <td style="padding: 14px 16px; border-bottom: 1px solid #e0f2fe; text-align: center;">${item.quantity}</td>
-      <td style="padding: 14px 16px; border-bottom: 1px solid #e0f2fe; text-align: right;">${formatCurrencyValue(item.rate)}</td>
-      <td style="padding: 14px 16px; border-bottom: 1px solid #e0f2fe; text-align: center;">${item.taxRate || 0}%</td>
-      <td style="padding: 14px 16px; border-bottom: 1px solid #e0f2fe; text-align: right; font-weight: 600;">${formatCurrencyValue(item.amount)}</td>
-    </tr>
-  `).join('');
+  const hasItems = data.items && data.items.length > 0 && data.items.some(item => item.description);
+
+  const linesHtml = hasItems
+    ? data.items.filter(item => item.description).map((item, index) => `
+      <tr style="background: ${index % 2 === 0 ? '#f0f9ff' : 'white'};">
+        <td style="padding: 14px 16px; border-bottom: 1px solid #e0f2fe;">${item.description}</td>
+        <td style="padding: 14px 16px; border-bottom: 1px solid #e0f2fe; text-align: center; color: #64748b;">${item.hsnSac || '-'}</td>
+        <td style="padding: 14px 16px; border-bottom: 1px solid #e0f2fe; text-align: center;">${item.quantity}</td>
+        <td style="padding: 14px 16px; border-bottom: 1px solid #e0f2fe; text-align: right;">${formatCurrencyValue(item.rate)}</td>
+        <td style="padding: 14px 16px; border-bottom: 1px solid #e0f2fe; text-align: center;">${item.taxRate || 0}%</td>
+        <td style="padding: 14px 16px; border-bottom: 1px solid #e0f2fe; text-align: right; font-weight: 600;">${formatCurrencyValue(item.amount)}</td>
+      </tr>
+    `).join('')
+    : '';
+
+  // Helper to clean address parts (remove trailing commas, extra spaces)
+  const cleanAddressPart = (part: string | undefined): string => {
+    if (!part) return '';
+    return part.replace(/,+\s*$/, '').replace(/\s+/g, ' ').trim();
+  };
 
   const companyAddress = [
     data.company.address,
     data.company.city,
     data.company.state,
     data.company.pincode,
-  ].filter(Boolean).join(', ');
+  ].map(cleanAddressPart).filter(Boolean).join(', ');
 
   const customerAddress = [
     data.customer.address,
     data.customer.city,
     data.customer.state,
     data.customer.pincode,
-  ].filter(Boolean).join(', ');
+  ].map(cleanAddressPart).filter(Boolean).join(', ');
 
   return `
     <!DOCTYPE html>
@@ -227,10 +237,16 @@ export const modernTemplate: TemplateFunction = (data: DocumentData): string => 
           color: #0ea5e9;
           font-weight: 500;
         }
+        @page {
+          size: A4;
+          margin: 10mm 15mm;
+        }
         @media print {
           body { padding: 0; }
           button, .no-print { display: none !important; }
           .header-bar { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          table, th, td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .totals-card { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         }
       </style>
     </head>
@@ -275,10 +291,10 @@ export const modernTemplate: TemplateFunction = (data: DocumentData): string => 
                 <span class="date-value">${formatDateValue(secondaryDate)}</span>
               </div>
               ` : ''}
-              ${data.status ? `
+              ${data.status === 'overdue' ? `
               <div class="date-item">
                 <span class="date-label">Status</span>
-                <span class="date-value">${data.status.charAt(0).toUpperCase() + data.status.slice(1)}</span>
+                <span class="date-value" style="color: #dc2626;">OVERDUE</span>
               </div>
               ` : ''}
             </div>
@@ -317,14 +333,14 @@ export const modernTemplate: TemplateFunction = (data: DocumentData): string => 
           </div>
         </div>
 
-        ${data.notes ? `
+        ${data.notes && data.notes.trim() ? `
         <div class="notes-section">
           <h4>Notes</h4>
           <p>${data.notes}</p>
         </div>
         ` : ''}
 
-        ${data.terms ? `
+        ${data.terms && data.terms.trim() ? `
         <div class="notes-section" style="margin-top: 20px;">
           <h4>Terms & Conditions</h4>
           <p>${data.terms}</p>

@@ -375,15 +375,20 @@ export default function Quotes() {
           gstin: quote.customer?.gstin,
           email: quote.customer?.email,
         },
-        items: quoteLines.map((line: any) => ({
-          description: line.description || '',
-          hsnSac: line.hsnSacCode,
-          quantity: parseFloat(line.quantity) || 1,
-          rate: parseFloat(line.unitPrice) || 0,
-          amount: parseFloat(line.amount) || 0,
-          taxRate: parseFloat(line.taxRate) || 0,
-          taxAmount: parseFloat(line.taxAmount) || 0,
-        })),
+        items: quoteLines.map((line: any) => {
+          const qty = parseFloat(line.quantity) || 1;
+          const rate = parseFloat(line.unitPrice) || 0;
+          const lineAmount = qty * rate; // Pre-tax amount
+          return {
+            description: line.description || '',
+            hsnSac: line.hsnSacCode || '',
+            quantity: qty,
+            rate: rate,
+            amount: lineAmount,
+            taxRate: parseFloat(line.taxRate) || 0,
+            taxAmount: parseFloat(line.taxAmount) || 0,
+          };
+        }),
         subtotal,
         taxBreakdown: { cgst, sgst, igst },
         totalAmount: total,
