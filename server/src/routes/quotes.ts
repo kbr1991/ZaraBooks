@@ -228,19 +228,80 @@ router.patch('/:id', requireCompany, async (req: AuthenticatedRequest, res) => {
       return res.status(404).json({ error: 'Quote not found' });
     }
 
-    if (quote.status !== 'draft') {
-      return res.status(400).json({ error: 'Only draft quotes can be edited' });
+    // Allow editing draft and sent quotes (not accepted/declined/converted)
+    if (!['draft', 'sent'].includes(quote.status)) {
+      return res.status(400).json({ error: 'Quote cannot be edited in current status' });
+    }
+
+    // If updating items, recalculate totals
+    const { items, ...otherData } = updateData;
+
+    if (items && items.length > 0) {
+      // Delete existing lines and recreate
+      await db.delete(quoteLines).where(eq(quoteLines.quoteId, id));
+
+      let subtotal = 0;
+      let totalTax = 0;
+      let totalCgst = 0;
+      let totalSgst = 0;
+
+      const processedLines = items.map((item: any, index: number) => {
+        const quantity = parseFloat(item.quantity || 1);
+        const unitPrice = parseFloat(item.rate || item.unitPrice || 0);
+        const lineAmount = quantity * unitPrice;
+        const taxRate = parseFloat(item.gstRate || item.taxRate || 0);
+        const taxAmount = (lineAmount * taxRate) / 100;
+        const cgst = taxAmount / 2;
+        const sgst = taxAmount / 2;
+
+        subtotal += lineAmount;
+        totalTax += taxAmount;
+        totalCgst += cgst;
+        totalSgst += sgst;
+
+        return {
+          quoteId: id,
+          description: item.description,
+          hsnSacCode: item.hsnSac || item.hsnSacCode,
+          quantity: quantity.toString(),
+          unitPrice: unitPrice.toString(),
+          taxRate: taxRate.toString(),
+          taxAmount: taxAmount.toString(),
+          amount: (lineAmount + taxAmount).toString(),
+          sortOrder: index,
+        };
+      });
+
+      await db.insert(quoteLines).values(processedLines);
+
+      // Update quote with new totals
+      const totalAmount = subtotal + totalTax;
+      otherData.subtotal = subtotal.toString();
+      otherData.taxAmount = totalTax.toString();
+      otherData.cgst = totalCgst.toString();
+      otherData.sgst = totalSgst.toString();
+      otherData.totalAmount = totalAmount.toString();
     }
 
     const [updated] = await db.update(quotes)
       .set({
-        ...updateData,
+        ...otherData,
+        validUntil: otherData.expiryDate || otherData.validUntil,
         updatedAt: new Date(),
       })
       .where(eq(quotes.id, id))
       .returning();
 
-    res.json(updated);
+    // Fetch complete quote with relations
+    const completeQuote = await db.query.quotes.findFirst({
+      where: eq(quotes.id, id),
+      with: {
+        customer: true,
+        lines: true,
+      },
+    });
+
+    res.json(completeQuote);
   } catch (error) {
     console.error('Update quote error:', error);
     res.status(500).json({ error: 'Failed to update quote' });
@@ -368,8 +429,9 @@ router.post('/:id/convert-to-invoice', requireCompany, async (req: Authenticated
       return res.status(404).json({ error: 'Quote not found' });
     }
 
-    if (quote.status !== 'accepted') {
-      return res.status(400).json({ error: 'Only accepted quotes can be converted to invoice' });
+    // Allow converting sent or accepted quotes to invoice
+    if (!['sent', 'accepted'].includes(quote.status)) {
+      return res.status(400).json({ error: 'Only sent or accepted quotes can be converted to invoice' });
     }
 
     if (quote.convertedToInvoiceId) {
@@ -464,6 +526,7 @@ router.post('/:id/convert-to-invoice', requireCompany, async (req: Authenticated
 router.post('/:id/convert-to-order', requireCompany, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
+    const { poNumber, engagementLetterRef } = req.body;
 
     const quote = await db.query.quotes.findFirst({
       where: and(
@@ -479,8 +542,9 @@ router.post('/:id/convert-to-order', requireCompany, async (req: AuthenticatedRe
       return res.status(404).json({ error: 'Quote not found' });
     }
 
-    if (quote.status !== 'accepted') {
-      return res.status(400).json({ error: 'Only accepted quotes can be converted to sales order' });
+    // Allow converting sent or accepted quotes to sales order
+    if (!['sent', 'accepted'].includes(quote.status)) {
+      return res.status(400).json({ error: 'Only sent or accepted quotes can be converted to sales order' });
     }
 
     if (quote.convertedToOrderId) {
@@ -512,7 +576,14 @@ router.post('/:id/convert-to-order', requireCompany, async (req: AuthenticatedRe
 
     const today = new Date().toISOString().split('T')[0];
 
-    // Create sales order
+    // Create sales order with PO/Engagement Letter reference in notes
+    const referenceNotes = [
+      poNumber ? `Customer PO: ${poNumber}` : null,
+      engagementLetterRef ? `Engagement Letter: ${engagementLetterRef}` : null,
+    ].filter(Boolean).join('\n');
+
+    const orderNotes = [referenceNotes, quote.notes].filter(Boolean).join('\n\n');
+
     const [order] = await db.insert(salesOrders).values({
       companyId: req.companyId!,
       fiscalYearId: fiscalYear.id,
@@ -528,8 +599,8 @@ router.post('/:id/convert-to-order', requireCompany, async (req: AuthenticatedRe
       sgst: quote.sgst,
       igst: quote.igst,
       totalAmount: quote.totalAmount,
-      status: 'draft',
-      notes: quote.notes,
+      status: 'confirmed',
+      notes: orderNotes || null,
       createdByUserId: req.userId,
     }).returning();
 
@@ -585,8 +656,9 @@ router.delete('/:id', requireCompany, async (req: AuthenticatedRequest, res) => 
       return res.status(404).json({ error: 'Quote not found' });
     }
 
-    if (quote.status !== 'draft') {
-      return res.status(400).json({ error: 'Only draft quotes can be deleted' });
+    // Allow deleting draft and sent quotes (not accepted/declined/converted)
+    if (!['draft', 'sent'].includes(quote.status)) {
+      return res.status(400).json({ error: 'Quote cannot be deleted in current status' });
     }
 
     await db.delete(quoteLines).where(eq(quoteLines.quoteId, id));

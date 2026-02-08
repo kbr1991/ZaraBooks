@@ -53,6 +53,9 @@ import {
   Download,
   Printer,
   FileDown,
+  MoreHorizontal,
+  ShoppingCart,
+  Receipt,
 } from 'lucide-react';
 import { generateDocument, DocumentData, TemplateId } from '@/lib/document-templates';
 import TemplateSelector from '@/components/document/TemplateSelector';
@@ -100,6 +103,11 @@ export default function Quotes() {
   const [editingQuote, setEditingQuote] = useState<Quote | null>(null);
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [pendingDownloadQuoteId, setPendingDownloadQuoteId] = useState<string | null>(null);
+  const [showConvertDialog, setShowConvertDialog] = useState(false);
+  const [convertType, setConvertType] = useState<'order' | 'invoice'>('order');
+  const [convertQuoteId, setConvertQuoteId] = useState<string | null>(null);
+  const [poNumber, setPoNumber] = useState('');
+  const [engagementLetterRef, setEngagementLetterRef] = useState('');
   const [formData, setFormData] = useState({
     customerId: '',
     quoteDate: new Date().toISOString().split('T')[0],
@@ -237,9 +245,56 @@ export default function Quotes() {
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       toast({ title: 'Quote converted to invoice' });
+      setShowConvertDialog(false);
+      setConvertQuoteId(null);
     },
     onError: () => {
       toast({ title: 'Failed to convert quote', variant: 'destructive' });
+    },
+  });
+
+  // Convert to sales order mutation
+  const convertToOrderMutation = useMutation({
+    mutationFn: async ({ quoteId, poNumber, engagementLetterRef }: { quoteId: string; poNumber?: string; engagementLetterRef?: string }) => {
+      const response = await fetch(`/api/quotes/${quoteId}/convert-to-order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ poNumber, engagementLetterRef }),
+      });
+      if (!response.ok) throw new Error('Failed to convert quote');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['sales-orders'] });
+      toast({ title: 'Quote converted to sales order' });
+      setShowConvertDialog(false);
+      setConvertQuoteId(null);
+      setPoNumber('');
+      setEngagementLetterRef('');
+    },
+    onError: () => {
+      toast({ title: 'Failed to convert quote', variant: 'destructive' });
+    },
+  });
+
+  // Delete quote mutation
+  const deleteQuoteMutation = useMutation({
+    mutationFn: async (quoteId: string) => {
+      const response = await fetch(`/api/quotes/${quoteId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Failed to delete quote');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      toast({ title: 'Quote deleted' });
+    },
+    onError: () => {
+      toast({ title: 'Failed to delete quote', variant: 'destructive' });
     },
   });
 
@@ -247,6 +302,25 @@ export default function Quotes() {
   const handleOpenTemplateSelector = (quoteId: string) => {
     setPendingDownloadQuoteId(quoteId);
     setShowTemplateSelector(true);
+  };
+
+  // Handle opening convert dialog
+  const handleOpenConvertDialog = (quoteId: string, type: 'order' | 'invoice') => {
+    setConvertQuoteId(quoteId);
+    setConvertType(type);
+    setPoNumber('');
+    setEngagementLetterRef('');
+    setShowConvertDialog(true);
+  };
+
+  // Handle convert action
+  const handleConvert = () => {
+    if (!convertQuoteId) return;
+    if (convertType === 'order') {
+      convertToOrderMutation.mutate({ quoteId: convertQuoteId, poNumber, engagementLetterRef });
+    } else {
+      convertToInvoiceMutation.mutate(convertQuoteId);
+    }
   };
 
   // Handle download PDF with template
@@ -558,40 +632,44 @@ export default function Quotes() {
                           <Eye className="h-4 w-4" />
                         </Button>
                         {quote.status === 'draft' && (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => sendQuoteMutation.mutate(quote.id)}
-                            >
-                              <Send className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleEditQuote(quote)}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                          </>
-                        )}
-                        {quote.status === 'accepted' && (
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => convertToInvoiceMutation.mutate(quote.id)}
-                            title="Convert to Invoice"
+                            onClick={() => sendQuoteMutation.mutate(quote.id)}
+                            title="Send Quote"
                           >
-                            <FileOutput className="h-4 w-4 text-green-500" />
+                            <Send className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {['draft', 'sent'].includes(quote.status) && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleEditQuote(quote)}
+                            title="Edit Quote"
+                          >
+                            <Edit className="h-4 w-4" />
                           </Button>
                         )}
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon">
-                              <Download className="h-4 w-4" />
+                              <MoreHorizontal className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            {['sent', 'accepted'].includes(quote.status) && (
+                              <>
+                                <DropdownMenuItem onClick={() => handleOpenConvertDialog(quote.id, 'order')}>
+                                  <ShoppingCart className="h-4 w-4 mr-2" />
+                                  Convert to Sales Order
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleOpenConvertDialog(quote.id, 'invoice')}>
+                                  <Receipt className="h-4 w-4 mr-2" />
+                                  Convert to Invoice
+                                </DropdownMenuItem>
+                              </>
+                            )}
                             <DropdownMenuItem onClick={() => handleQuickDownload(quote.id, 'pdf')}>
                               <FileDown className="h-4 w-4 mr-2" />
                               Save as PDF
@@ -604,13 +682,21 @@ export default function Quotes() {
                               <FileText className="h-4 w-4 mr-2" />
                               Choose Template...
                             </DropdownMenuItem>
+                            {['draft', 'sent'].includes(quote.status) && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  if (confirm('Are you sure you want to delete this quote?')) {
+                                    deleteQuoteMutation.mutate(quote.id);
+                                  }
+                                }}
+                                className="text-red-600"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete Quote
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
-                        {quote.status === 'draft' && (
-                          <Button variant="ghost" size="icon">
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
-                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -876,14 +962,31 @@ export default function Quotes() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            {selectedQuote?.status === 'accepted' && (
-              <Button onClick={() => {
-                convertToInvoiceMutation.mutate(selectedQuote.id);
-                setSelectedQuote(null);
-              }}>
-                <FileOutput className="h-4 w-4 mr-2" />
-                Convert to Invoice
-              </Button>
+            {selectedQuote && ['sent', 'accepted'].includes(selectedQuote.status) && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button>
+                    <FileOutput className="h-4 w-4 mr-2" />
+                    Convert
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => {
+                    setSelectedQuote(null);
+                    handleOpenConvertDialog(selectedQuote.id, 'order');
+                  }}>
+                    <ShoppingCart className="h-4 w-4 mr-2" />
+                    Convert to Sales Order
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => {
+                    setSelectedQuote(null);
+                    handleOpenConvertDialog(selectedQuote.id, 'invoice');
+                  }}>
+                    <Receipt className="h-4 w-4 mr-2" />
+                    Convert to Invoice
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </DialogFooter>
         </DialogContent>
@@ -897,6 +1000,65 @@ export default function Quotes() {
         onSelect={handleDownloadPDF}
         documentType="quote"
       />
+
+      {/* Convert Quote Dialog */}
+      <Dialog open={showConvertDialog} onOpenChange={setShowConvertDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {convertType === 'order' ? 'Convert to Sales Order' : 'Convert to Invoice'}
+            </DialogTitle>
+            <DialogDescription>
+              {convertType === 'order'
+                ? 'Create a sales order from this quote. You can optionally add PO or Engagement Letter references.'
+                : 'Create an invoice directly from this quote.'}
+            </DialogDescription>
+          </DialogHeader>
+          {convertType === 'order' && (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="poNumber">Customer PO Number (Optional)</Label>
+                <Input
+                  id="poNumber"
+                  placeholder="e.g., PO-2024-001"
+                  value={poNumber}
+                  onChange={(e) => setPoNumber(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="engagementLetter">Engagement Letter Reference (Optional)</Label>
+                <Input
+                  id="engagementLetter"
+                  placeholder="e.g., EL/2024/001"
+                  value={engagementLetterRef}
+                  onChange={(e) => setEngagementLetterRef(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowConvertDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConvert}
+              disabled={convertToOrderMutation.isPending || convertToInvoiceMutation.isPending}
+            >
+              {convertType === 'order' ? (
+                <>
+                  <ShoppingCart className="h-4 w-4 mr-2" />
+                  Create Sales Order
+                </>
+              ) : (
+                <>
+                  <Receipt className="h-4 w-4 mr-2" />
+                  Create Invoice
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
