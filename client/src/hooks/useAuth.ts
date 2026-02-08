@@ -23,6 +23,8 @@ interface Company {
   state: string | null;
   pincode: string | null;
   gaapStandard: string;
+  logoUrl: string | null;
+  defaultTemplate: string | null;
   role: string;
 }
 

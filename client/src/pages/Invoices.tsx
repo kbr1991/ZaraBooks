@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -29,6 +30,7 @@ import {
 } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 import { formatCurrency } from '@/lib/utils';
 import {
   FileText,
@@ -41,7 +43,18 @@ import {
   Trash2,
   CheckCircle,
   AlertCircle,
+  X,
+  Printer,
+  FileDown,
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { generateDocument, DocumentData, TemplateId } from '@/lib/document-templates';
+import TemplateSelector from '@/components/document/TemplateSelector';
 
 interface Invoice {
   id: string;
@@ -74,13 +87,240 @@ interface Customer {
   gstin?: string;
 }
 
+interface LineItem {
+  id: string;
+  description: string;
+  hsnSac: string;
+  quantity: number;
+  rate: number;
+  gstRate: number;
+  amount: number;
+  taxAmount: number;
+}
+
+const emptyLineItem = (): LineItem => ({
+  id: crypto.randomUUID(),
+  description: '',
+  hsnSac: '',
+  quantity: 1,
+  rate: 0,
+  gstRate: 18,
+  amount: 0,
+  taxAmount: 0,
+});
+
 export default function Invoices() {
   const { toast } = useToast();
+  const { currentCompany } = useAuth();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+  const [pendingDownloadInvoiceId, setPendingDownloadInvoiceId] = useState<string | null>(null);
+
+  // Form state
+  const [formData, setFormData] = useState({
+    customerId: '',
+    invoiceDate: new Date().toISOString().split('T')[0],
+    dueDate: '',
+    placeOfSupply: '',
+    notes: '',
+  });
+  const [lineItems, setLineItems] = useState<LineItem[]>([emptyLineItem()]);
+
+  // Calculate line item amount when quantity or rate changes
+  const updateLineItem = (index: number, field: keyof LineItem, value: string | number) => {
+    setLineItems(prev => {
+      const updated = [...prev];
+      const item = { ...updated[index] };
+
+      if (field === 'quantity' || field === 'rate' || field === 'gstRate') {
+        item[field] = typeof value === 'string' ? parseFloat(value) || 0 : value;
+      } else {
+        (item as any)[field] = value;
+      }
+
+      // Recalculate amount and tax
+      item.amount = item.quantity * item.rate;
+      item.taxAmount = (item.amount * item.gstRate) / 100;
+
+      updated[index] = item;
+      return updated;
+    });
+  };
+
+  const addLineItem = () => {
+    setLineItems(prev => [...prev, emptyLineItem()]);
+  };
+
+  const removeLineItem = (index: number) => {
+    if (lineItems.length > 1) {
+      setLineItems(prev => prev.filter((_, i) => i !== index));
+    }
+  };
+
+  // Calculate totals
+  const subtotal = lineItems.reduce((sum, item) => sum + item.amount, 0);
+  const totalTax = lineItems.reduce((sum, item) => sum + item.taxAmount, 0);
+  const cgst = totalTax / 2;
+  const sgst = totalTax / 2;
+  const total = subtotal + totalTax;
+
+  // Handle opening template selector for download
+  const handleOpenTemplateSelector = (invoiceId: string) => {
+    setPendingDownloadInvoiceId(invoiceId);
+    setShowTemplateSelector(true);
+  };
+
+  // Handle download PDF with template
+  const handleDownloadPDF = async (templateId: TemplateId, _action: 'print' | 'pdf') => {
+    if (!pendingDownloadInvoiceId) return;
+
+    try {
+      // Fetch full invoice with lines
+      const response = await fetch(`/api/invoices/${pendingDownloadInvoiceId}`, {
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        toast({ title: 'Failed to load invoice', variant: 'destructive' });
+        return;
+      }
+      const invoice = await response.json();
+
+      // Create a new window with print-friendly content
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        toast({ title: 'Please allow popups to download PDF', variant: 'destructive' });
+        return;
+      }
+
+      // Build document data for template
+      const invoiceLines = invoice.lines || [];
+      const subtotal = parseFloat(invoice.subtotal || 0);
+      const cgst = parseFloat(invoice.cgst || 0);
+      const sgst = parseFloat(invoice.sgst || 0);
+      const igst = parseFloat(invoice.igst || 0);
+      const total = parseFloat(invoice.totalAmount || 0);
+
+      const documentData: DocumentData = {
+        type: 'invoice',
+        documentNumber: invoice.invoiceNumber,
+        documentDate: invoice.invoiceDate,
+        dueDate: invoice.dueDate,
+        company: {
+          name: currentCompany?.name || '',
+          legalName: currentCompany?.legalName,
+          logoUrl: currentCompany?.logoUrl,
+          address: currentCompany?.address,
+          city: currentCompany?.city,
+          state: currentCompany?.state,
+          pincode: currentCompany?.pincode,
+          gstin: currentCompany?.gstin,
+          pan: currentCompany?.pan,
+        },
+        customer: {
+          name: invoice.customer?.name || 'Customer',
+          address: invoice.customer?.address,
+          city: invoice.customer?.city,
+          state: invoice.customer?.state,
+          pincode: invoice.customer?.pincode,
+          gstin: invoice.customer?.gstin,
+          email: invoice.customer?.email,
+        },
+        items: invoiceLines.map((line: any) => ({
+          description: line.description || '',
+          hsnSac: line.hsnSacCode,
+          quantity: parseFloat(line.quantity) || 1,
+          rate: parseFloat(line.unitPrice) || 0,
+          amount: parseFloat(line.amount) || 0,
+          taxRate: parseFloat(line.taxRate) || 0,
+          taxAmount: parseFloat(line.taxAmount) || 0,
+        })),
+        subtotal,
+        taxBreakdown: { cgst, sgst, igst },
+        totalAmount: total,
+        notes: invoice.notes,
+        status: invoice.status,
+        billingAddress: invoice.billingAddress,
+        shippingAddress: invoice.shippingAddress,
+      };
+
+      // Generate HTML using template
+      const htmlContent = generateDocument(documentData, templateId);
+
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+
+      // Auto-trigger print after document loads
+      printWindow.onload = () => {
+        setTimeout(() => {
+          printWindow.print();
+        }, 250);
+      };
+
+      setPendingDownloadInvoiceId(null);
+    } catch (error) {
+      toast({ title: 'Failed to generate PDF', variant: 'destructive' });
+    }
+  };
+
+  // Quick download with default template
+  const handleQuickDownload = async (invoiceId: string, action: 'print' | 'pdf') => {
+    setPendingDownloadInvoiceId(invoiceId);
+    const defaultTemplate = (currentCompany?.defaultTemplate as TemplateId) || 'classic';
+    await handleDownloadPDF(defaultTemplate, action);
+  };
+
+  // Handle edit invoice
+  const handleEditInvoice = async (invoice: Invoice) => {
+    // Fetch full invoice with lines
+    const response = await fetch(`/api/invoices/${invoice.id}`, {
+      credentials: 'include',
+    });
+    if (response.ok) {
+      const fullInvoice = await response.json();
+      setEditingInvoice(fullInvoice);
+      setFormData({
+        customerId: fullInvoice.customerId,
+        invoiceDate: fullInvoice.invoiceDate,
+        dueDate: fullInvoice.dueDate,
+        placeOfSupply: fullInvoice.placeOfSupply || '',
+        notes: fullInvoice.notes || '',
+      });
+      // Convert invoice lines to form line items
+      if (fullInvoice.lines && fullInvoice.lines.length > 0) {
+        setLineItems(fullInvoice.lines.map((line: any) => ({
+          id: line.id,
+          description: line.description || '',
+          hsnSac: line.hsnSacCode || '',
+          quantity: parseFloat(line.quantity) || 1,
+          rate: parseFloat(line.unitPrice) || 0,
+          gstRate: parseFloat(line.taxRate) || 18,
+          amount: parseFloat(line.amount) || 0,
+          taxAmount: parseFloat(line.taxAmount) || 0,
+        })));
+      }
+      setShowCreateDialog(true);
+    }
+  };
+
+  // Reset form when dialog closes
+  useEffect(() => {
+    if (!showCreateDialog) {
+      setFormData({
+        customerId: '',
+        invoiceDate: new Date().toISOString().split('T')[0],
+        dueDate: '',
+        placeOfSupply: '',
+        notes: '',
+      });
+      setLineItems([emptyLineItem()]);
+      setEditingInvoice(null);
+    }
+  }, [showCreateDialog]);
 
   // Fetch invoices
   const { data: invoices, isLoading } = useQuery<Invoice[]>({
@@ -127,6 +367,29 @@ export default function Invoices() {
     },
     onError: () => {
       toast({ title: 'Failed to create invoice', variant: 'destructive' });
+    },
+  });
+
+  // Update invoice mutation
+  const updateInvoiceMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      const response = await fetch(`/api/invoices/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) throw new Error('Failed to update invoice');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      setShowCreateDialog(false);
+      setEditingInvoice(null);
+      toast({ title: 'Invoice updated successfully' });
+    },
+    onError: () => {
+      toast({ title: 'Failed to update invoice', variant: 'destructive' });
     },
   });
 
@@ -369,7 +632,11 @@ export default function Invoices() {
                             >
                               <Send className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="icon">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleEditInvoice(invoice)}
+                            >
                               <Edit className="h-4 w-4" />
                             </Button>
                           </>
@@ -383,9 +650,27 @@ export default function Invoices() {
                             <CheckCircle className="h-4 w-4 text-green-500" />
                           </Button>
                         )}
-                        <Button variant="ghost" size="icon">
-                          <Download className="h-4 w-4" />
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <Download className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => handleQuickDownload(invoice.id, 'pdf')}>
+                              <FileDown className="h-4 w-4 mr-2" />
+                              Save as PDF
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleQuickDownload(invoice.id, 'print')}>
+                              <Printer className="h-4 w-4 mr-2" />
+                              Print
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleOpenTemplateSelector(invoice.id)}>
+                              <FileText className="h-4 w-4 mr-2" />
+                              Choose Template...
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -398,18 +683,21 @@ export default function Invoices() {
 
       {/* Create Invoice Dialog */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Create New Invoice</DialogTitle>
+            <DialogTitle>{editingInvoice ? 'Edit Invoice' : 'Create New Invoice'}</DialogTitle>
             <DialogDescription>
-              Create a new invoice for your customer
+              {editingInvoice ? 'Update invoice details' : 'Create a new invoice for your customer'}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Customer</Label>
-                <Select>
+                <Label>Customer *</Label>
+                <Select
+                  value={formData.customerId}
+                  onValueChange={(value) => setFormData(prev => ({ ...prev, customerId: value }))}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select customer" />
                   </SelectTrigger>
@@ -423,18 +711,29 @@ export default function Invoices() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Invoice Date</Label>
-                <Input type="date" defaultValue={new Date().toISOString().split('T')[0]} />
+                <Label>Invoice Date *</Label>
+                <Input
+                  type="date"
+                  value={formData.invoiceDate}
+                  onChange={(e) => setFormData(prev => ({ ...prev, invoiceDate: e.target.value }))}
+                />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Due Date</Label>
-                <Input type="date" />
+                <Label>Due Date *</Label>
+                <Input
+                  type="date"
+                  value={formData.dueDate}
+                  onChange={(e) => setFormData(prev => ({ ...prev, dueDate: e.target.value }))}
+                />
               </div>
               <div className="space-y-2">
                 <Label>Place of Supply</Label>
-                <Select>
+                <Select
+                  value={formData.placeOfSupply}
+                  onValueChange={(value) => setFormData(prev => ({ ...prev, placeOfSupply: value }))}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select state" />
                   </SelectTrigger>
@@ -443,6 +742,10 @@ export default function Invoices() {
                     <SelectItem value="KA">Karnataka</SelectItem>
                     <SelectItem value="TN">Tamil Nadu</SelectItem>
                     <SelectItem value="DL">Delhi</SelectItem>
+                    <SelectItem value="GJ">Gujarat</SelectItem>
+                    <SelectItem value="RJ">Rajasthan</SelectItem>
+                    <SelectItem value="UP">Uttar Pradesh</SelectItem>
+                    <SelectItem value="WB">West Bengal</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -451,73 +754,126 @@ export default function Invoices() {
             {/* Line Items */}
             <div className="space-y-2">
               <Label>Items</Label>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Description</TableHead>
-                    <TableHead>HSN/SAC</TableHead>
-                    <TableHead className="w-[80px]">Qty</TableHead>
-                    <TableHead className="w-[120px]">Rate</TableHead>
-                    <TableHead className="w-[80px]">GST %</TableHead>
-                    <TableHead className="w-[120px] text-right">Amount</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <TableRow>
-                    <TableCell>
-                      <Input placeholder="Item description" />
-                    </TableCell>
-                    <TableCell>
-                      <Input placeholder="998311" />
-                    </TableCell>
-                    <TableCell>
-                      <Input type="number" defaultValue={1} />
-                    </TableCell>
-                    <TableCell>
-                      <Input type="number" placeholder="0.00" />
-                    </TableCell>
-                    <TableCell>
-                      <Select defaultValue="18">
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="0">0%</SelectItem>
-                          <SelectItem value="5">5%</SelectItem>
-                          <SelectItem value="12">12%</SelectItem>
-                          <SelectItem value="18">18%</SelectItem>
-                          <SelectItem value="28">28%</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    <TableCell className="text-right">₹0.00</TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-              <Button variant="outline" size="sm">
+              <div className="border rounded-lg overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead className="w-[250px]">Description *</TableHead>
+                      <TableHead className="w-[100px]">HSN/SAC</TableHead>
+                      <TableHead className="w-[80px]">Qty</TableHead>
+                      <TableHead className="w-[120px]">Rate</TableHead>
+                      <TableHead className="w-[80px]">GST %</TableHead>
+                      <TableHead className="w-[120px] text-right">Amount</TableHead>
+                      <TableHead className="w-[50px]"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {lineItems.map((item, index) => (
+                      <TableRow key={item.id}>
+                        <TableCell className="p-2">
+                          <Input
+                            placeholder="Item description"
+                            value={item.description}
+                            onChange={(e) => updateLineItem(index, 'description', e.target.value)}
+                          />
+                        </TableCell>
+                        <TableCell className="p-2">
+                          <Input
+                            placeholder="998311"
+                            value={item.hsnSac}
+                            onChange={(e) => updateLineItem(index, 'hsnSac', e.target.value)}
+                          />
+                        </TableCell>
+                        <TableCell className="p-2">
+                          <Input
+                            type="number"
+                            min="1"
+                            value={item.quantity}
+                            onChange={(e) => updateLineItem(index, 'quantity', e.target.value)}
+                          />
+                        </TableCell>
+                        <TableCell className="p-2">
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={item.rate || ''}
+                            onChange={(e) => updateLineItem(index, 'rate', e.target.value)}
+                          />
+                        </TableCell>
+                        <TableCell className="p-2">
+                          <Select
+                            value={item.gstRate.toString()}
+                            onValueChange={(value) => updateLineItem(index, 'gstRate', value)}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="0">0%</SelectItem>
+                              <SelectItem value="5">5%</SelectItem>
+                              <SelectItem value="12">12%</SelectItem>
+                              <SelectItem value="18">18%</SelectItem>
+                              <SelectItem value="28">28%</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell className="p-2 text-right font-medium">
+                          {formatCurrency(item.amount)}
+                        </TableCell>
+                        <TableCell className="p-2">
+                          {lineItems.length > 1 && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => removeLineItem(index)}
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              <Button variant="outline" size="sm" onClick={addLineItem}>
                 <Plus className="h-4 w-4 mr-2" />
                 Add Line
               </Button>
             </div>
 
+            {/* Notes */}
+            <div className="space-y-2">
+              <Label>Notes</Label>
+              <Textarea
+                placeholder="Add any notes for the customer..."
+                value={formData.notes}
+                onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                rows={2}
+              />
+            </div>
+
             {/* Totals */}
             <div className="flex justify-end">
-              <div className="w-64 space-y-2">
+              <div className="w-72 space-y-2 bg-muted/30 p-4 rounded-lg">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Subtotal</span>
-                  <span>₹0.00</span>
+                  <span className="font-medium">{formatCurrency(subtotal)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">CGST</span>
-                  <span>₹0.00</span>
+                  <span>{formatCurrency(cgst)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">SGST</span>
-                  <span>₹0.00</span>
+                  <span>{formatCurrency(sgst)}</span>
                 </div>
-                <div className="flex justify-between font-bold text-lg border-t pt-2">
+                <div className="flex justify-between font-bold text-lg border-t pt-2 mt-2">
                   <span>Total</span>
-                  <span>₹0.00</span>
+                  <span>{formatCurrency(total)}</span>
                 </div>
               </div>
             </div>
@@ -528,24 +884,69 @@ export default function Invoices() {
             </Button>
             <Button
               variant="outline"
-              disabled={createInvoiceMutation.isPending}
+              disabled={createInvoiceMutation.isPending || updateInvoiceMutation.isPending}
               onClick={() => {
-                // TODO: Collect form data and create draft invoice
-                toast({ title: 'Coming soon', description: 'Save as draft functionality coming soon' });
+                if (!formData.customerId || !formData.dueDate) {
+                  toast({ title: 'Please fill required fields', variant: 'destructive' });
+                  return;
+                }
+                if (!lineItems.some(item => item.description && item.amount > 0)) {
+                  toast({ title: 'Please add at least one line item', variant: 'destructive' });
+                  return;
+                }
+                const invoiceData = {
+                  customerId: formData.customerId,
+                  invoiceDate: formData.invoiceDate,
+                  dueDate: formData.dueDate,
+                  notes: formData.notes,
+                  lines: lineItems.filter(item => item.description).map(item => ({
+                    description: item.description,
+                    hsnSacCode: item.hsnSac,
+                    quantity: item.quantity,
+                    unitPrice: item.rate,
+                    taxRate: item.gstRate,
+                  })),
+                };
+                if (editingInvoice) {
+                  updateInvoiceMutation.mutate({ id: editingInvoice.id, data: invoiceData });
+                } else {
+                  createInvoiceMutation.mutate(invoiceData as any);
+                }
               }}
             >
-              Save as Draft
+              {editingInvoice ? 'Update Invoice' : 'Save as Draft'}
             </Button>
-            <Button
-              disabled={createInvoiceMutation.isPending}
-              onClick={() => {
-                // TODO: Collect form data, create and send invoice
-                toast({ title: 'Coming soon', description: 'Full invoice creation coming soon' });
-              }}
-            >
-              <Send className="h-4 w-4 mr-2" />
-              Save & Send
-            </Button>
+            {!editingInvoice && (
+              <Button
+                disabled={createInvoiceMutation.isPending}
+                onClick={() => {
+                  if (!formData.customerId || !formData.dueDate) {
+                    toast({ title: 'Please fill required fields', variant: 'destructive' });
+                    return;
+                  }
+                  if (!lineItems.some(item => item.description && item.amount > 0)) {
+                    toast({ title: 'Please add at least one line item', variant: 'destructive' });
+                    return;
+                  }
+                  createInvoiceMutation.mutate({
+                    customerId: formData.customerId,
+                    invoiceDate: formData.invoiceDate,
+                    dueDate: formData.dueDate,
+                    notes: formData.notes,
+                    lines: lineItems.filter(item => item.description).map(item => ({
+                      description: item.description,
+                      hsnSacCode: item.hsnSac,
+                      quantity: item.quantity,
+                      unitPrice: item.rate,
+                      taxRate: item.gstRate,
+                    })),
+                  } as any);
+                }}
+              >
+                <Send className="h-4 w-4 mr-2" />
+                Save & Send
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -588,13 +989,40 @@ export default function Invoices() {
             <Button variant="outline" onClick={() => setSelectedInvoice(null)}>
               Close
             </Button>
-            <Button>
-              <Download className="h-4 w-4 mr-2" />
-              Download PDF
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button>
+                  <Download className="h-4 w-4 mr-2" />
+                  Download
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => selectedInvoice && handleQuickDownload(selectedInvoice.id, 'pdf')}>
+                  <FileDown className="h-4 w-4 mr-2" />
+                  Save as PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => selectedInvoice && handleQuickDownload(selectedInvoice.id, 'print')}>
+                  <Printer className="h-4 w-4 mr-2" />
+                  Print
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => selectedInvoice && handleOpenTemplateSelector(selectedInvoice.id)}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  Choose Template...
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Template Selector Dialog */}
+      <TemplateSelector
+        open={showTemplateSelector}
+        onOpenChange={setShowTemplateSelector}
+        defaultTemplate={(currentCompany?.defaultTemplate as TemplateId) || 'classic'}
+        onSelect={handleDownloadPDF}
+        documentType="invoice"
+      />
     </div>
   );
 }

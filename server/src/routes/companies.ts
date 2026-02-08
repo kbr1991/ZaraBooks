@@ -322,4 +322,112 @@ router.post('/:id/users', requireAuth, async (req: AuthenticatedRequest, res) =>
   }
 });
 
+// Upload company logo (base64)
+router.post('/:id/logo', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { logoUrl } = req.body;
+
+    // Verify user is owner or accountant
+    const companyUser = await db.query.companyUsers.findFirst({
+      where: and(
+        eq(companyUsers.companyId, id),
+        eq(companyUsers.userId, req.userId!),
+        eq(companyUsers.isActive, true)
+      ),
+    });
+
+    if (!companyUser || !['owner', 'accountant'].includes(companyUser.role)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    // Validate base64 image format
+    if (!logoUrl || !logoUrl.startsWith('data:image/')) {
+      return res.status(400).json({ error: 'Invalid image format. Must be a base64 encoded image.' });
+    }
+
+    // Check size (limit to ~500KB base64 which is ~375KB actual image)
+    if (logoUrl.length > 500000) {
+      return res.status(400).json({ error: 'Image too large. Maximum size is 500KB.' });
+    }
+
+    const [updated] = await db.update(companies)
+      .set({
+        logoUrl,
+        updatedAt: new Date(),
+      })
+      .where(eq(companies.id, id))
+      .returning();
+
+    res.json({ success: true, logoUrl: updated.logoUrl });
+  } catch (error) {
+    console.error('Upload logo error:', error);
+    res.status(500).json({ error: 'Failed to upload logo' });
+  }
+});
+
+// Delete company logo
+router.delete('/:id/logo', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verify user is owner or accountant
+    const companyUser = await db.query.companyUsers.findFirst({
+      where: and(
+        eq(companyUsers.companyId, id),
+        eq(companyUsers.userId, req.userId!),
+        eq(companyUsers.isActive, true)
+      ),
+    });
+
+    if (!companyUser || !['owner', 'accountant'].includes(companyUser.role)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    await db.update(companies)
+      .set({
+        logoUrl: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(companies.id, id));
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete logo error:', error);
+    res.status(500).json({ error: 'Failed to delete logo' });
+  }
+});
+
+// Select company (set active in session)
+router.post('/:id/select', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verify user has access
+    const companyUser = await db.query.companyUsers.findFirst({
+      where: and(
+        eq(companyUsers.companyId, id),
+        eq(companyUsers.userId, req.userId!),
+        eq(companyUsers.isActive, true)
+      ),
+      with: {
+        company: true,
+      },
+    });
+
+    if (!companyUser) {
+      return res.status(404).json({ error: 'Company not found' });
+    }
+
+    req.session.companyId = id;
+    res.json({
+      ...companyUser.company,
+      role: companyUser.role,
+    });
+  } catch (error) {
+    console.error('Select company error:', error);
+    res.status(500).json({ error: 'Failed to select company' });
+  }
+});
+
 export default router;

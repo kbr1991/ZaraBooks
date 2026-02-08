@@ -27,8 +27,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 import { formatCurrency } from '@/lib/utils';
 import {
   FileText,
@@ -43,7 +50,12 @@ import {
   XCircle,
   FileOutput,
   AlertTriangle,
+  Download,
+  Printer,
+  FileDown,
 } from 'lucide-react';
+import { generateDocument, DocumentData, TemplateId } from '@/lib/document-templates';
+import TemplateSelector from '@/components/document/TemplateSelector';
 
 interface Quote {
   id: string;
@@ -79,11 +91,15 @@ interface Customer {
 
 export default function Quotes() {
   const { toast } = useToast();
+  const { currentCompany } = useAuth();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
+  const [editingQuote, setEditingQuote] = useState<Quote | null>(null);
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+  const [pendingDownloadQuoteId, setPendingDownloadQuoteId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     customerId: '',
     quoteDate: new Date().toISOString().split('T')[0],
@@ -141,6 +157,53 @@ export default function Quotes() {
     },
   });
 
+  // Update quote mutation
+  const updateQuoteMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: typeof formData }) => {
+      const response = await fetch(`/api/quotes/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) throw new Error('Failed to update quote');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      setShowCreateDialog(false);
+      setEditingQuote(null);
+      resetForm();
+      toast({ title: 'Quote updated successfully' });
+    },
+    onError: () => {
+      toast({ title: 'Failed to update quote', variant: 'destructive' });
+    },
+  });
+
+  // Handle edit quote
+  const handleEditQuote = async (quote: Quote) => {
+    const response = await fetch(`/api/quotes/${quote.id}`, { credentials: 'include' });
+    if (response.ok) {
+      const fullQuote = await response.json();
+      setEditingQuote(fullQuote);
+      setFormData({
+        customerId: fullQuote.customerId,
+        quoteDate: fullQuote.quoteDate,
+        expiryDate: fullQuote.validUntil || fullQuote.expiryDate || '',
+        terms: fullQuote.terms || '',
+        items: fullQuote.lines?.map((line: any) => ({
+          description: line.description || '',
+          quantity: parseFloat(line.quantity) || 1,
+          rate: line.unitPrice || '',
+          hsnSac: line.hsnSacCode || '',
+          gstRate: line.taxRate || '18',
+        })) || [{ description: '', quantity: 1, rate: '', hsnSac: '', gstRate: '18' }],
+      });
+      setShowCreateDialog(true);
+    }
+  };
+
   // Send quote mutation
   const sendQuoteMutation = useMutation({
     mutationFn: async (quoteId: string) => {
@@ -180,6 +243,105 @@ export default function Quotes() {
     },
   });
 
+  // Handle opening template selector for download
+  const handleOpenTemplateSelector = (quoteId: string) => {
+    setPendingDownloadQuoteId(quoteId);
+    setShowTemplateSelector(true);
+  };
+
+  // Handle download PDF with template
+  const handleDownloadPDF = async (templateId: TemplateId, _action: 'print' | 'pdf') => {
+    if (!pendingDownloadQuoteId) return;
+
+    try {
+      const response = await fetch(`/api/quotes/${pendingDownloadQuoteId}`, {
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        toast({ title: 'Failed to load quote', variant: 'destructive' });
+        return;
+      }
+      const quote = await response.json();
+
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        toast({ title: 'Please allow popups to download PDF', variant: 'destructive' });
+        return;
+      }
+
+      const quoteLines = quote.lines || [];
+      const subtotal = parseFloat(quote.subtotal || 0);
+      const cgst = parseFloat(quote.cgst || 0);
+      const sgst = parseFloat(quote.sgst || 0);
+      const igst = parseFloat(quote.igst || 0);
+      const total = parseFloat(quote.totalAmount || 0);
+
+      const documentData: DocumentData = {
+        type: 'quote',
+        documentNumber: quote.quoteNumber,
+        documentDate: quote.quoteDate,
+        expiryDate: quote.validUntil || quote.expiryDate,
+        company: {
+          name: currentCompany?.name || '',
+          legalName: currentCompany?.legalName,
+          logoUrl: currentCompany?.logoUrl,
+          address: currentCompany?.address,
+          city: currentCompany?.city,
+          state: currentCompany?.state,
+          pincode: currentCompany?.pincode,
+          gstin: currentCompany?.gstin,
+          pan: currentCompany?.pan,
+        },
+        customer: {
+          name: quote.customer?.name || 'Customer',
+          address: quote.customer?.address,
+          city: quote.customer?.city,
+          state: quote.customer?.state,
+          pincode: quote.customer?.pincode,
+          gstin: quote.customer?.gstin,
+          email: quote.customer?.email,
+        },
+        items: quoteLines.map((line: any) => ({
+          description: line.description || '',
+          hsnSac: line.hsnSacCode,
+          quantity: parseFloat(line.quantity) || 1,
+          rate: parseFloat(line.unitPrice) || 0,
+          amount: parseFloat(line.amount) || 0,
+          taxRate: parseFloat(line.taxRate) || 0,
+          taxAmount: parseFloat(line.taxAmount) || 0,
+        })),
+        subtotal,
+        taxBreakdown: { cgst, sgst, igst },
+        totalAmount: total,
+        notes: quote.notes,
+        terms: quote.terms,
+        status: quote.status,
+      };
+
+      const htmlContent = generateDocument(documentData, templateId);
+
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+
+      printWindow.onload = () => {
+        setTimeout(() => {
+          printWindow.print();
+        }, 250);
+      };
+
+      setPendingDownloadQuoteId(null);
+    } catch (error) {
+      toast({ title: 'Failed to generate PDF', variant: 'destructive' });
+    }
+  };
+
+  // Quick download with default template
+  const handleQuickDownload = async (quoteId: string, action: 'print' | 'pdf') => {
+    setPendingDownloadQuoteId(quoteId);
+    const defaultTemplate = (currentCompany?.defaultTemplate as TemplateId) || 'classic';
+    await handleDownloadPDF(defaultTemplate, action);
+  };
+
   const resetForm = () => {
     setFormData({
       customerId: '',
@@ -188,6 +350,7 @@ export default function Quotes() {
       terms: '',
       items: [{ description: '', quantity: 1, rate: '', hsnSac: '', gstRate: '18' }],
     });
+    setEditingQuote(null);
   };
 
   const addLineItem = () => {
@@ -403,7 +566,11 @@ export default function Quotes() {
                             >
                               <Send className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="icon">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleEditQuote(quote)}
+                            >
                               <Edit className="h-4 w-4" />
                             </Button>
                           </>
@@ -418,6 +585,27 @@ export default function Quotes() {
                             <FileOutput className="h-4 w-4 text-green-500" />
                           </Button>
                         )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <Download className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => handleQuickDownload(quote.id, 'pdf')}>
+                              <FileDown className="h-4 w-4 mr-2" />
+                              Save as PDF
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleQuickDownload(quote.id, 'print')}>
+                              <Printer className="h-4 w-4 mr-2" />
+                              Print
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleOpenTemplateSelector(quote.id)}>
+                              <FileText className="h-4 w-4 mr-2" />
+                              Choose Template...
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                         {quote.status === 'draft' && (
                           <Button variant="ghost" size="icon">
                             <Trash2 className="h-4 w-4 text-red-500" />
@@ -437,9 +625,9 @@ export default function Quotes() {
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Create New Quote</DialogTitle>
+            <DialogTitle>{editingQuote ? 'Edit Quote' : 'Create New Quote'}</DialogTitle>
             <DialogDescription>
-              Create a quote or estimate for your customer
+              {editingQuote ? 'Update quote details' : 'Create a quote or estimate for your customer'}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -591,25 +779,33 @@ export default function Quotes() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
+            <Button variant="outline" onClick={() => { setShowCreateDialog(false); resetForm(); }}>
               Cancel
             </Button>
             <Button
               variant="outline"
-              disabled={createQuoteMutation.isPending}
-              onClick={() => createQuoteMutation.mutate(formData)}
-            >
-              Save as Draft
-            </Button>
-            <Button
-              disabled={createQuoteMutation.isPending || !formData.customerId}
+              disabled={createQuoteMutation.isPending || updateQuoteMutation.isPending}
               onClick={() => {
-                createQuoteMutation.mutate(formData);
+                if (editingQuote) {
+                  updateQuoteMutation.mutate({ id: editingQuote.id, data: formData });
+                } else {
+                  createQuoteMutation.mutate(formData);
+                }
               }}
             >
-              <Send className="h-4 w-4 mr-2" />
-              Save & Send
+              {editingQuote ? 'Update Quote' : 'Save as Draft'}
             </Button>
+            {!editingQuote && (
+              <Button
+                disabled={createQuoteMutation.isPending || !formData.customerId}
+                onClick={() => {
+                  createQuoteMutation.mutate(formData);
+                }}
+              >
+                <Send className="h-4 w-4 mr-2" />
+                Save & Send
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -658,6 +854,28 @@ export default function Quotes() {
             <Button variant="outline" onClick={() => setSelectedQuote(null)}>
               Close
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <Download className="h-4 w-4 mr-2" />
+                  Download
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => selectedQuote && handleQuickDownload(selectedQuote.id, 'pdf')}>
+                  <FileDown className="h-4 w-4 mr-2" />
+                  Save as PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => selectedQuote && handleQuickDownload(selectedQuote.id, 'print')}>
+                  <Printer className="h-4 w-4 mr-2" />
+                  Print
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => selectedQuote && handleOpenTemplateSelector(selectedQuote.id)}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  Choose Template...
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             {selectedQuote?.status === 'accepted' && (
               <Button onClick={() => {
                 convertToInvoiceMutation.mutate(selectedQuote.id);
@@ -670,6 +888,15 @@ export default function Quotes() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Template Selector Dialog */}
+      <TemplateSelector
+        open={showTemplateSelector}
+        onOpenChange={setShowTemplateSelector}
+        defaultTemplate={(currentCompany?.defaultTemplate as TemplateId) || 'classic'}
+        onSelect={handleDownloadPDF}
+        documentType="quote"
+      />
     </div>
   );
 }

@@ -105,7 +105,8 @@ export const companies = pgTable('companies', {
   gaapStandard: gaapStandardEnum('gaap_standard').default('INDIA_GAAP'),
   baseCurrency: varchar('base_currency', { length: 3 }).default('INR'),
   // Logo and branding
-  logoUrl: varchar('logo_url', { length: 500 }),
+  logoUrl: text('logo_url'), // Base64 encoded logo for document templates
+  defaultTemplate: varchar('default_template', { length: 50 }).default('classic'), // classic, modern, professional, minimal
   // Practice Manager Integration
   pmClientId: varchar('pm_client_id', { length: 36 }),
   createdByUserId: varchar('created_by_user_id', { length: 36 }).references(() => users.id),

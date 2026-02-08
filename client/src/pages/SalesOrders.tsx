@@ -27,8 +27,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 import { formatCurrency } from '@/lib/utils';
 import {
   ShoppingCart,
@@ -41,7 +48,13 @@ import {
   Clock,
   Package,
   FileOutput,
+  Download,
+  Printer,
+  FileDown,
+  FileText,
 } from 'lucide-react';
+import { generateDocument, DocumentData, TemplateId } from '@/lib/document-templates';
+import TemplateSelector from '@/components/document/TemplateSelector';
 
 interface SalesOrder {
   id: string;
@@ -77,11 +90,14 @@ interface Customer {
 
 export default function SalesOrders() {
   const { toast } = useToast();
+  const { currentCompany } = useAuth();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<SalesOrder | null>(null);
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+  const [pendingDownloadOrderId, setPendingDownloadOrderId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     customerId: '',
     orderDate: new Date().toISOString().split('T')[0],
@@ -176,6 +192,105 @@ export default function SalesOrders() {
       toast({ title: 'Failed to convert order', variant: 'destructive' });
     },
   });
+
+  // Handle opening template selector for download
+  const handleOpenTemplateSelector = (orderId: string) => {
+    setPendingDownloadOrderId(orderId);
+    setShowTemplateSelector(true);
+  };
+
+  // Handle download PDF with template
+  const handleDownloadPDF = async (templateId: TemplateId, _action: 'print' | 'pdf') => {
+    if (!pendingDownloadOrderId) return;
+
+    try {
+      const response = await fetch(`/api/sales-orders/${pendingDownloadOrderId}`, {
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        toast({ title: 'Failed to load order', variant: 'destructive' });
+        return;
+      }
+      const order = await response.json();
+
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        toast({ title: 'Please allow popups to download PDF', variant: 'destructive' });
+        return;
+      }
+
+      const orderLines = order.lines || [];
+      const subtotal = parseFloat(order.subtotal || 0);
+      const cgst = parseFloat(order.cgst || 0);
+      const sgst = parseFloat(order.sgst || 0);
+      const igst = parseFloat(order.igst || 0);
+      const total = parseFloat(order.totalAmount || 0);
+
+      const documentData: DocumentData = {
+        type: 'sales_order',
+        documentNumber: order.orderNumber,
+        documentDate: order.orderDate,
+        deliveryDate: order.deliveryDate || order.expectedDeliveryDate,
+        company: {
+          name: currentCompany?.name || '',
+          legalName: currentCompany?.legalName,
+          logoUrl: currentCompany?.logoUrl,
+          address: currentCompany?.address,
+          city: currentCompany?.city,
+          state: currentCompany?.state,
+          pincode: currentCompany?.pincode,
+          gstin: currentCompany?.gstin,
+          pan: currentCompany?.pan,
+        },
+        customer: {
+          name: order.customer?.name || 'Customer',
+          address: order.customer?.address,
+          city: order.customer?.city,
+          state: order.customer?.state,
+          pincode: order.customer?.pincode,
+          gstin: order.customer?.gstin,
+          email: order.customer?.email,
+        },
+        items: orderLines.map((line: any) => ({
+          description: line.description || '',
+          hsnSac: line.hsnSacCode,
+          quantity: parseFloat(line.quantity) || 1,
+          rate: parseFloat(line.unitPrice) || 0,
+          amount: parseFloat(line.amount) || 0,
+          taxRate: parseFloat(line.taxRate) || 0,
+          taxAmount: parseFloat(line.taxAmount) || 0,
+        })),
+        subtotal,
+        taxBreakdown: { cgst, sgst, igst },
+        totalAmount: total,
+        notes: order.notes,
+        status: order.status,
+        shippingAddress: order.shippingAddress,
+      };
+
+      const htmlContent = generateDocument(documentData, templateId);
+
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+
+      printWindow.onload = () => {
+        setTimeout(() => {
+          printWindow.print();
+        }, 250);
+      };
+
+      setPendingDownloadOrderId(null);
+    } catch (error) {
+      toast({ title: 'Failed to generate PDF', variant: 'destructive' });
+    }
+  };
+
+  // Quick download with default template
+  const handleQuickDownload = async (orderId: string, action: 'print' | 'pdf') => {
+    setPendingDownloadOrderId(orderId);
+    const defaultTemplate = (currentCompany?.defaultTemplate as TemplateId) || 'classic';
+    await handleDownloadPDF(defaultTemplate, action);
+  };
 
   const resetForm = () => {
     setFormData({
@@ -407,6 +522,27 @@ export default function SalesOrders() {
                             <FileOutput className="h-4 w-4 text-blue-500" />
                           </Button>
                         )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <Download className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => handleQuickDownload(order.id, 'pdf')}>
+                              <FileDown className="h-4 w-4 mr-2" />
+                              Save as PDF
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleQuickDownload(order.id, 'print')}>
+                              <Printer className="h-4 w-4 mr-2" />
+                              Print
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleOpenTemplateSelector(order.id)}>
+                              <FileText className="h-4 w-4 mr-2" />
+                              Choose Template...
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                         {order.status === 'open' && (
                           <Button variant="ghost" size="icon">
                             <Trash2 className="h-4 w-4 text-red-500" />
@@ -623,6 +759,28 @@ export default function SalesOrders() {
             <Button variant="outline" onClick={() => setSelectedOrder(null)}>
               Close
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <Download className="h-4 w-4 mr-2" />
+                  Download
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => selectedOrder && handleQuickDownload(selectedOrder.id, 'pdf')}>
+                  <FileDown className="h-4 w-4 mr-2" />
+                  Save as PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => selectedOrder && handleQuickDownload(selectedOrder.id, 'print')}>
+                  <Printer className="h-4 w-4 mr-2" />
+                  Print
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => selectedOrder && handleOpenTemplateSelector(selectedOrder.id)}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  Choose Template...
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             {selectedOrder?.status === 'confirmed' && (
               <Button onClick={() => {
                 convertToInvoiceMutation.mutate(selectedOrder.id);
@@ -635,6 +793,15 @@ export default function SalesOrders() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Template Selector Dialog */}
+      <TemplateSelector
+        open={showTemplateSelector}
+        onOpenChange={setShowTemplateSelector}
+        defaultTemplate={(currentCompany?.defaultTemplate as TemplateId) || 'classic'}
+        onSelect={handleDownloadPDF}
+        documentType="sales_order"
+      />
     </div>
   );
 }

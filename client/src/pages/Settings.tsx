@@ -24,10 +24,14 @@ import {
   RefreshCw,
   CheckCircle,
   DollarSign,
+  Palette,
 } from 'lucide-react';
 import CurrencySettings from '@/components/accounting/CurrencySettings';
+import LogoUpload from '@/components/settings/LogoUpload';
+import { TemplateGrid } from '@/components/document/TemplatePreview';
+import { TemplateId } from '@/lib/document-templates/types';
 
-type SettingsTab = 'company' | 'profile' | 'fiscal-years' | 'currencies' | 'gst' | 'tds' | 'integration';
+type SettingsTab = 'company' | 'branding' | 'profile' | 'fiscal-years' | 'currencies' | 'gst' | 'tds' | 'integration';
 
 export default function Settings() {
   const queryClient = useQueryClient();
@@ -177,8 +181,40 @@ export default function Settings() {
     },
   });
 
+  // Branding state
+  const [selectedTemplate, setSelectedTemplate] = useState<TemplateId>(
+    (currentCompany?.defaultTemplate as TemplateId) || 'classic'
+  );
+
+  // Update template mutation
+  const updateTemplateMutation = useMutation({
+    mutationFn: async (template: TemplateId) => {
+      const response = await fetch(`/api/companies/${currentCompany?.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ defaultTemplate: template }),
+      });
+      if (!response.ok) throw new Error('Failed to update template');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['auth'] });
+      toast({ title: 'Default template updated!' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Update failed', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const handleTemplateChange = (template: TemplateId) => {
+    setSelectedTemplate(template);
+    updateTemplateMutation.mutate(template);
+  };
+
   const tabs = [
     { id: 'company' as SettingsTab, label: 'Company', icon: Building2 },
+    { id: 'branding' as SettingsTab, label: 'Branding', icon: Palette },
     { id: 'profile' as SettingsTab, label: 'Profile', icon: User },
     { id: 'fiscal-years' as SettingsTab, label: 'Fiscal Years', icon: Calendar },
     { id: 'currencies' as SettingsTab, label: 'Currencies', icon: DollarSign },
@@ -341,6 +377,47 @@ export default function Settings() {
                 </form>
               </CardContent>
             </Card>
+          )}
+
+          {/* Branding Settings */}
+          {activeTab === 'branding' && (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Company Logo</CardTitle>
+                  <CardDescription>
+                    Upload your company logo to appear on invoices, quotes, and other documents
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {currentCompany?.id && (
+                    <LogoUpload
+                      companyId={currentCompany.id}
+                      currentLogoUrl={currentCompany.logoUrl}
+                    />
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Default Document Template</CardTitle>
+                  <CardDescription>
+                    Choose the default template style for invoices, quotes, and sales orders
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <TemplateGrid
+                    selectedTemplate={selectedTemplate}
+                    onSelect={handleTemplateChange}
+                    size="md"
+                  />
+                  <p className="text-sm text-muted-foreground mt-4">
+                    You can override this template when downloading or printing individual documents.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
           )}
 
           {/* Profile Settings */}
