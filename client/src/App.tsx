@@ -62,6 +62,12 @@ const Products = lazy(() => import('@/pages/Products'));
 // Accountant pages
 const CostCenters = lazy(() => import('@/pages/CostCenters'));
 
+// Settings pages
+const DocumentTemplates = lazy(() => import('@/pages/DocumentTemplates'));
+
+// Public pages
+const AcceptInvite = lazy(() => import('@/pages/AcceptInvite'));
+
 // Loading fallback component
 function PageLoader() {
   return (
@@ -139,6 +145,11 @@ export default function App() {
         {/* Public routes */}
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/accept-invite" element={
+          <Suspense fallback={<PageLoader />}>
+            <AcceptInvite />
+          </Suspense>
+        } />
 
         {/* Protected routes - require login */}
         <Route
@@ -343,6 +354,12 @@ export default function App() {
           <Route path="cost-centers" element={
             <Suspense fallback={<PageLoader />}>
               <CostCenters />
+            </Suspense>
+          } />
+          {/* Settings routes */}
+          <Route path="document-templates" element={
+            <Suspense fallback={<PageLoader />}>
+              <DocumentTemplates />
             </Suspense>
           } />
         </Route>

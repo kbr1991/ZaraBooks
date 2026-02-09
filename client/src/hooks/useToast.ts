@@ -1,7 +1,8 @@
 import * as React from 'react';
 
 const TOAST_LIMIT = 5;
-const TOAST_REMOVE_DELAY = 5000;
+const TOAST_REMOVE_DELAY = 1000; // Time after dismiss animation before removal
+const TOAST_AUTO_DISMISS_DELAY = 3000; // Auto-dismiss after 3 seconds
 
 type ToasterToast = {
   id: string;
@@ -139,6 +140,11 @@ function toast({ ...props }: Toast) {
       id,
     },
   });
+
+  // Auto-dismiss after timeout
+  setTimeout(() => {
+    dismiss();
+  }, TOAST_AUTO_DISMISS_DELAY);
 
   return {
     id: id,

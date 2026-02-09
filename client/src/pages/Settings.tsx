@@ -25,7 +25,9 @@ import {
   CheckCircle,
   DollarSign,
   Palette,
+  ExternalLink,
 } from 'lucide-react';
+import { Link as RouterLink } from 'react-router-dom';
 import { GstinInput } from '@/components/ui/gstin-input';
 import { getShortAddress, type GstinDetails } from '@/lib/gst-utils';
 import CurrencySettings from '@/components/accounting/CurrencySettings';
@@ -433,6 +435,28 @@ export default function Settings() {
                   <p className="text-sm text-muted-foreground mt-4">
                     You can override this template when downloading or printing individual documents.
                   </p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Custom Templates</CardTitle>
+                  <CardDescription>
+                    Create and manage custom HTML/CSS templates for your documents
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Build fully customized templates with your own HTML and CSS. Use placeholders like
+                    {' {{company.name}}'}, {' {{customer.gstin}}'}, {' {{totalAmount}}'} to dynamically insert data.
+                  </p>
+                  <RouterLink to="/document-templates">
+                    <Button variant="outline">
+                      <FileText className="h-4 w-4 mr-2" />
+                      Manage Custom Templates
+                      <ExternalLink className="h-4 w-4 ml-2" />
+                    </Button>
+                  </RouterLink>
                 </CardContent>
               </Card>
             </div>

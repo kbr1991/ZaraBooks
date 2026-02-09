@@ -438,6 +438,11 @@ DATABASE_URL=postgresql://localhost/zarabooks
 # Session
 SESSION_SECRET=your-session-secret
 
+# Email (Resend - required for user invitations)
+RESEND_API_KEY=re_xxxxxxxxxxxxx
+EMAIL_FROM=Zara Books <noreply@yourdomain.com>
+APP_URL=https://your-app-url.com
+
 # AI (optional)
 ANTHROPIC_API_KEY=your-api-key
 
@@ -492,6 +497,30 @@ _Add notes during development sessions_
 - Added professional documentation (README, SOP, CHANGELOG)
 - Updated CLAUDE.md with comprehensive project memory
 
+### 2025-02-09 (Session 7 - Email Service Integration)
+
+**Email Service Setup:**
+- Integrated Resend for transactional emails
+- Created email service with HTML/text templates
+- User invitation emails with branded templates
+- Welcome emails after accepting invitations
+- Password reset email templates (ready for future use)
+
+**Files Added:**
+- `server/src/services/email.ts` - Email service with Resend integration and templates
+- `client/src/pages/AcceptInvite.tsx` - Invitation acceptance page
+
+**Files Modified:**
+- `server/src/routes/userManagement.ts` - Added email sending on invite
+- `client/src/App.tsx` - Added /accept-invite route
+- `client/src/pages/Login.tsx` - Added redirect parameter support
+- `client/src/pages/Register.tsx` - Added redirect parameter support
+
+**Environment Variables Required:**
+- `RESEND_API_KEY` - Get from https://resend.com/api-keys
+- `EMAIL_FROM` - Verified sender (e.g., "Zara Books <noreply@yourdomain.com>")
+- `APP_URL` - Application URL for email links
+
 ---
 
-*Last Updated: 2025-02-09*
+*Last Updated: 2026-02-09*

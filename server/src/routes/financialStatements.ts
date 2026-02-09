@@ -103,11 +103,12 @@ router.get('/balance-sheet', requireCompany, async (req: AuthenticatedRequest, r
 
     let netProfit = 0;
     plBalances.forEach(b => {
-      const balance = parseFloat(b.credit) - parseFloat(b.debit);
       if (b.accountType === 'income') {
-        netProfit += balance;
+        // Income: credit balance is positive (credit - debit)
+        netProfit += parseFloat(b.credit) - parseFloat(b.debit);
       } else {
-        netProfit -= balance; // Expenses reduce profit
+        // Expense: debit balance reduces profit (subtract debit - credit)
+        netProfit -= parseFloat(b.debit) - parseFloat(b.credit);
       }
     });
 

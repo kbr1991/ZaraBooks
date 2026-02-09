@@ -4,6 +4,13 @@ import { users, companyUsers, userInvitations, companies } from '@shared/schema'
 import { eq, and, desc, gt, sql } from 'drizzle-orm';
 import { requireAuth, requireCompany, AuthenticatedRequest } from '../middleware/auth';
 import crypto from 'crypto';
+import {
+  sendEmail,
+  getInvitationEmailHtml,
+  getInvitationEmailText,
+  getWelcomeEmailHtml,
+  getWelcomeEmailText,
+} from '../services/email';
 
 const router = Router();
 
@@ -183,12 +190,42 @@ router.post('/invite', requireCompany, async (req: AuthenticatedRequest, res) =>
       isActive: true,
     }).returning();
 
-    // In production, send invitation email here
-    // For now, just return success
+    // Get inviter and company info for email
+    const [inviter, company] = await Promise.all([
+      db.query.users.findFirst({ where: eq(users.id, req.userId!) }),
+      db.query.companies.findFirst({ where: eq(companies.id, req.companyId!) }),
+    ]);
+
+    const inviterName = inviter
+      ? `${inviter.firstName} ${inviter.lastName || ''}`.trim()
+      : 'A team member';
+    const companyName = company?.name || 'the company';
+
+    // Send invitation email
+    const emailResult = await sendEmail({
+      to: email.toLowerCase(),
+      subject: `You're invited to join ${companyName} on Zara Books`,
+      html: getInvitationEmailHtml({
+        inviterName,
+        companyName,
+        role,
+        inviteToken: token,
+      }),
+      text: getInvitationEmailText({
+        inviterName,
+        companyName,
+        role,
+        inviteToken: token,
+      }),
+    });
+
     res.status(201).json({
-      message: 'Invitation sent',
+      message: emailResult.success
+        ? 'Invitation sent successfully'
+        : 'Invitation created (email delivery pending)',
       invitationId: invitation.id,
-      // Include token for development/testing
+      emailSent: emailResult.success,
+      // Include token for development/testing only
       ...(process.env.NODE_ENV !== 'production' && { token }),
     });
   } catch (error) {
@@ -243,6 +280,23 @@ router.post('/accept-invitation', requireAuth, async (req: AuthenticatedRequest,
     await db.update(userInvitations)
       .set({ acceptedAt: new Date() })
       .where(eq(userInvitations.id, invitation.id));
+
+    // Send welcome email
+    const userName = `${user.firstName} ${user.lastName || ''}`.trim();
+    await sendEmail({
+      to: user.email,
+      subject: `Welcome to ${invitation.company.name} on Zara Books`,
+      html: getWelcomeEmailHtml({
+        userName,
+        companyName: invitation.company.name,
+        role: invitation.role,
+      }),
+      text: getWelcomeEmailText({
+        userName,
+        companyName: invitation.company.name,
+        role: invitation.role,
+      }),
+    });
 
     res.json({
       message: 'Invitation accepted',

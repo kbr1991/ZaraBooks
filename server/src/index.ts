@@ -4,6 +4,9 @@ import pgSession from 'connect-pg-simple';
 import pg from 'pg';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import { sanitizeInput } from './middleware/sanitize';
 
 // Import routes
 import authRoutes from './routes/auth';
@@ -39,16 +42,61 @@ import debitNotesRoutes from './routes/debitNotes';
 import paymentsReceivedRoutes from './routes/paymentsReceived';
 import paymentsMadeRoutes from './routes/paymentsMade';
 import bankReconciliationRoutes from './routes/bankReconciliation';
+import documentTemplatesRoutes from './routes/documentTemplates';
 
 const { Pool } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
+
+// Security headers with helmet
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "blob:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+}));
+
+// General API rate limiting (100 requests per minute)
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 100,
+  message: { error: 'Too many requests, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Strict rate limiting for auth endpoints (5 attempts per 15 minutes)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5,
+  message: { error: 'Too many login attempts, please try again after 15 minutes' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true, // Only count failed attempts
+});
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// Apply input sanitization to prevent XSS attacks
+app.use(sanitizeInput);
+
 // Trust proxy for Railway/production
 app.set('trust proxy', 1);
+
+// Apply rate limiting to API routes
+app.use('/api/', apiLimiter);
 
 // Session configuration
 const PgSession = pgSession(session);
@@ -76,6 +124,8 @@ app.use(
 );
 
 // API Routes
+// Apply strict rate limiting to login endpoint
+app.use('/api/auth/login', authLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/companies', companiesRoutes);
 app.use('/api/chart-of-accounts', chartOfAccountsRoutes);
@@ -109,6 +159,7 @@ app.use('/api/debit-notes', debitNotesRoutes);
 app.use('/api/payments-received', paymentsReceivedRoutes);
 app.use('/api/payments-made', paymentsMadeRoutes);
 app.use('/api/bank-reconciliation', bankReconciliationRoutes);
+app.use('/api/document-templates', documentTemplatesRoutes);
 
 // Health check (basic - always returns ok for Railway health checks)
 app.get('/api/health', (_req: Request, res: Response) => {
