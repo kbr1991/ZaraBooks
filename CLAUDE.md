@@ -493,33 +493,44 @@ npm run db:studio
 
 _Add notes during development sessions_
 
-### Current Session
-- Added professional documentation (README, SOP, CHANGELOG)
-- Updated CLAUDE.md with comprehensive project memory
+### 2026-02-09 (Session 8 - Email Service & User Management Fixes)
 
-### 2025-02-09 (Session 7 - Email Service Integration)
+**User Management Fixes:**
+- Fixed API endpoints in UserManagement.tsx (`/api/users/*` instead of `/api/companies/*`)
+- Fixed JSON parsing error when inviting users
+- Added missing `is_active` column to `user_invitations` table in production database
 
-**Email Service Setup:**
+**Email Service Setup (Resend):**
 - Integrated Resend for transactional emails
-- Created email service with HTML/text templates
-- User invitation emails with branded templates
+- Created email service with HTML/text templates (`server/src/services/email.ts`)
+- Professional branded invitation emails
 - Welcome emails after accepting invitations
 - Password reset email templates (ready for future use)
+- Created `/accept-invite` page for handling invitation links
+- Added redirect parameter support to Login/Register pages
 
 **Files Added:**
 - `server/src/services/email.ts` - Email service with Resend integration and templates
 - `client/src/pages/AcceptInvite.tsx` - Invitation acceptance page
 
 **Files Modified:**
-- `server/src/routes/userManagement.ts` - Added email sending on invite
+- `server/src/routes/userManagement.ts` - Added email sending on invite/accept
 - `client/src/App.tsx` - Added /accept-invite route
 - `client/src/pages/Login.tsx` - Added redirect parameter support
 - `client/src/pages/Register.tsx` - Added redirect parameter support
+- `client/src/pages/UserManagement.tsx` - Fixed API endpoints
 
-**Environment Variables Required:**
-- `RESEND_API_KEY` - Get from https://resend.com/api-keys
-- `EMAIL_FROM` - Verified sender (e.g., "Zara Books <noreply@yourdomain.com>")
+**Environment Variables (Railway):**
+- `RESEND_API_KEY` - Resend API key for email sending
+- `EMAIL_FROM` - Sender address (using `onboarding@resend.dev` until domain verified)
 - `APP_URL` - Application URL for email links
+
+**Database Changes:**
+- Added `is_active` column to `user_invitations` table
+
+**Pending:**
+- Verify `zarabooks.app` domain in Resend (DNS propagation)
+- Once verified, update `EMAIL_FROM` to use custom domain
 
 ---
 
