@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { db } from '../db';
-import { chartOfAccounts, coaTemplates, journalEntryLines, journalEntries } from '@shared/schema';
+import { chartOfAccounts, coaTemplates, journalEntryLines, journalEntries, companies } from '@shared/schema';
 import { eq, and, asc, isNull, sql, desc } from 'drizzle-orm';
 import { requireCompany, AuthenticatedRequest } from '../middleware/auth';
 
@@ -262,10 +262,113 @@ router.get('/templates/list', async (_req, res) => {
       name: t.name,
       gaapStandard: t.gaapStandard,
       description: t.description,
+      entityTypes: (t as any).entityTypes || [],
     })));
   } catch (error) {
     console.error('Get templates error:', error);
     res.status(500).json({ error: 'Failed to get templates' });
+  }
+});
+
+// Helper to determine the best template for a company type
+function getTemplateForCompanyType(companyType: string | null): string {
+  const typeMapping: Record<string, string> = {
+    'private_limited': 'INDIA_GAAP',
+    'public_limited': 'INDIA_GAAP',
+    'opc': 'INDIA_GAAP',
+    'partnership': 'INDIA_GAAP_PARTNERSHIP',
+    'llp': 'INDIA_GAAP_LLP',
+    'proprietorship': 'INDIA_GAAP_PROPRIETORSHIP',
+    'corporation': 'US_GAAP',
+    'llc': 'US_GAAP',
+    'international': 'IFRS',
+    'listed': 'IFRS',
+  };
+  return typeMapping[companyType || ''] || 'INDIA_GAAP';
+}
+
+// Apply template to current company
+router.post('/templates/apply', requireCompany, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { templateId, gaapStandard, autoDetect } = req.body;
+
+    // Find template
+    let template;
+    if (templateId) {
+      template = await db.query.coaTemplates.findFirst({
+        where: eq(coaTemplates.id, templateId),
+      });
+    } else if (autoDetect) {
+      // Get company type and find matching template
+      const company = await db.query.companies.findFirst({
+        where: eq(companies.id, req.companyId!),
+      });
+      const targetStandard = getTemplateForCompanyType(company?.companyType || null);
+      template = await db.query.coaTemplates.findFirst({
+        where: eq(coaTemplates.gaapStandard, targetStandard),
+      });
+    } else {
+      template = await db.query.coaTemplates.findFirst({
+        where: eq(coaTemplates.gaapStandard, gaapStandard || 'INDIA_GAAP'),
+      });
+    }
+
+    if (!template || !template.templateData) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+
+    const templateData = template.templateData as { accounts: any[] };
+    const accountIdMap: Record<string, string> = {};
+
+    // First pass: create all accounts without parent references
+    for (const account of templateData.accounts) {
+      // Check if account code already exists
+      const existing = await db.query.chartOfAccounts.findFirst({
+        where: and(
+          eq(chartOfAccounts.companyId, req.companyId!),
+          eq(chartOfAccounts.code, account.code)
+        ),
+      });
+
+      if (existing) {
+        accountIdMap[account.code] = existing.id;
+        continue;
+      }
+
+      const [created] = await db.insert(chartOfAccounts).values({
+        companyId: req.companyId!,
+        code: account.code,
+        name: account.name,
+        accountType: account.type,
+        level: account.level,
+        isGroup: account.isGroup || false,
+        scheduleIIIMapping: account.scheduleIII,
+        isActive: true,
+        isSystem: true,
+      }).returning();
+      accountIdMap[account.code] = created.id;
+    }
+
+    // Second pass: update parent references
+    for (const account of templateData.accounts) {
+      if (account.parent) {
+        const parentId = accountIdMap[account.parent];
+        const accountId = accountIdMap[account.code];
+        if (parentId && accountId) {
+          await db.update(chartOfAccounts)
+            .set({ parentAccountId: parentId })
+            .where(eq(chartOfAccounts.id, accountId));
+        }
+      }
+    }
+
+    res.json({
+      message: 'Template applied successfully',
+      accountsCreated: Object.keys(accountIdMap).length
+    });
+  } catch (error) {
+    console.error('Apply template error:', error);
+    res.status(500).json({ error: 'Failed to apply template' });
   }
 });
 

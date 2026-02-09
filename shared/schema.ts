@@ -21,7 +21,14 @@ import { z } from 'zod';
 // User & Company Enums
 export const userRoleEnum = pgEnum('user_role', ['super_admin', 'admin', 'user']);
 export const companyRoleEnum = pgEnum('company_role', ['owner', 'accountant', 'auditor', 'viewer']);
-export const gaapStandardEnum = pgEnum('gaap_standard', ['INDIA_GAAP', 'US_GAAP', 'IFRS']);
+export const gaapStandardEnum = pgEnum('gaap_standard', [
+  'INDIA_GAAP',
+  'INDIA_GAAP_PARTNERSHIP',
+  'INDIA_GAAP_LLP',
+  'INDIA_GAAP_PROPRIETORSHIP',
+  'US_GAAP',
+  'IFRS'
+]);
 
 // Account Enums
 export const accountTypeEnum = pgEnum('account_type', ['asset', 'liability', 'equity', 'income', 'expense']);
@@ -151,6 +158,26 @@ export const coaTemplates = pgTable('coa_templates', {
   isActive: boolean('is_active').default(true),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+// ==================== DOCUMENT TEMPLATES ====================
+export const documentTemplateTypeEnum = pgEnum('document_template_type', ['invoice', 'quote', 'sales_order', 'all']);
+
+export const documentTemplates = pgTable('document_templates', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id', { length: 36 }).references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  name: varchar('name', { length: 100 }).notNull(),
+  description: text('description'),
+  templateType: documentTemplateTypeEnum('template_type').default('all').notNull(), // Which documents this template applies to
+  htmlContent: text('html_content').notNull(), // The HTML template with placeholders
+  cssContent: text('css_content'), // Optional custom CSS
+  isDefault: boolean('is_default').default(false), // Is this the default template for the company
+  isActive: boolean('is_active').default(true),
+  createdByUserId: varchar('created_by_user_id', { length: 36 }).references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_doc_templates_company').on(table.companyId),
+]);
 
 // ==================== CHART OF ACCOUNTS ====================
 export const chartOfAccounts = pgTable('chart_of_accounts', {
@@ -854,6 +881,18 @@ export const companiesRelations = relations(companies, ({ one, many }) => ({
   bankAccounts: many(bankAccounts),
   journalEntries: many(journalEntries),
   gstConfigs: many(gstConfig),
+  documentTemplates: many(documentTemplates),
+}));
+
+export const documentTemplatesRelations = relations(documentTemplates, ({ one }) => ({
+  company: one(companies, {
+    fields: [documentTemplates.companyId],
+    references: [companies.id],
+  }),
+  createdBy: one(users, {
+    fields: [documentTemplates.createdByUserId],
+    references: [users.id],
+  }),
 }));
 
 export const companyUsersRelations = relations(companyUsers, ({ one }) => ({
@@ -1942,6 +1981,12 @@ export const insertFiscalYearSchema = createInsertSchema(fiscalYears).omit({
   lockedAt: true,
 });
 
+export const insertDocumentTemplateSchema = createInsertSchema(documentTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const insertChartOfAccountsSchema = createInsertSchema(chartOfAccounts).omit({
   id: true,
   createdAt: true,
@@ -2185,6 +2230,8 @@ export type InsertCompanyUser = z.infer<typeof insertCompanyUserSchema>;
 export type FiscalYear = typeof fiscalYears.$inferSelect;
 export type InsertFiscalYear = z.infer<typeof insertFiscalYearSchema>;
 export type CoaTemplate = typeof coaTemplates.$inferSelect;
+export type DocumentTemplate = typeof documentTemplates.$inferSelect;
+export type InsertDocumentTemplate = z.infer<typeof insertDocumentTemplateSchema>;
 export type ChartOfAccount = typeof chartOfAccounts.$inferSelect;
 export type InsertChartOfAccount = z.infer<typeof insertChartOfAccountsSchema>;
 export type CostCenter = typeof costCenters.$inferSelect;

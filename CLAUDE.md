@@ -12,7 +12,7 @@
 | **Target Users** | CA firms, Startups (India) |
 | **Deployed URL** | https://scintillating-stillness-production-02d4.up.railway.app |
 | **Repository** | https://github.com/kbr1991/ZaraBooks |
-| **Current Version** | 1.2.0 |
+| **Current Version** | 1.3.0 |
 
 ### Tech Stack
 - **Frontend:** React 18, TypeScript, Tailwind CSS, React Query, React Router
@@ -256,6 +256,86 @@ GET /api/financial-statements/cash-flow
 
 ## Change Log
 
+### 2025-02-09 (Session 6 - Multi-Standard Templates & Entity-Type Awareness)
+
+**New Features:**
+
+1. **Entity-Type-Aware India GAAP Templates:**
+   - Company (Pvt Ltd/Public/OPC): Share Capital, Reserves & Surplus
+   - Partnership: Partners' Capital, Partners' Current Accounts
+   - LLP: Partners' Contribution, Reserves
+   - Proprietorship: Proprietor's Capital, Drawings Account
+
+2. **Multiple Accounting Standards:**
+   - India GAAP (auto-detect based on company type)
+   - US GAAP (Common Stock, Retained Earnings, AOCI)
+   - IFRS (Issued Capital, Revaluation Surplus, Non-controlling Interests)
+
+3. **Template Selection Dialog:**
+   - Visual selection of accounting standard
+   - Auto-detect option reads company type and applies correct template
+   - Info panel explains equity structure differences
+
+4. **Backend Enhancements:**
+   - `getTemplateForCompanyType()` helper function
+   - `autoDetect` parameter in template application
+   - Extended `gaap_standard` enum with Partnership/LLP/Proprietorship variants
+
+**Files Modified:**
+- `server/src/db/seed.ts` - Complete rewrite with 6 templates, modular account structures
+- `server/src/routes/chartOfAccounts.ts` - Auto-detect logic, company type mapping
+- `shared/schema.ts` - Extended gaapStandardEnum
+- `client/src/pages/ChartOfAccounts.tsx` - Template selection dialog
+
+---
+
+### 2025-02-09 (Session 5 - Chart of Accounts CRUD Fix)
+
+**Critical Fix: Add Account Button Was Non-Functional**
+- The "Add Account" button existed but had no onClick handler
+- No form dialog was implemented for creating accounts
+- Backend endpoints existed but frontend was incomplete
+
+**Changes Made:**
+
+1. **Full CRUD Implementation for Chart of Accounts:**
+   - Added `showAddDialog`, `showEditDialog`, `showDeleteDialog` state
+   - Added `formData` state for form fields
+   - Added `createAccountMutation` for POST /api/chart-of-accounts
+   - Added `updateAccountMutation` for PATCH /api/chart-of-accounts/:id
+   - Added `deleteAccountMutation` for DELETE /api/chart-of-accounts/:id
+   - Added `initializeTemplateMutation` for POST /api/chart-of-accounts/templates/apply
+
+2. **Add Account Dialog with Fields:**
+   - Account Code, Account Name (required)
+   - Account Type (asset/liability/equity/income/expense)
+   - Parent Account (dropdown of group accounts)
+   - Is Group Account checkbox
+   - Description
+   - Opening Balance with Debit/Credit type
+   - GST Settings (applicable, rate, HSN/SAC code)
+
+3. **Edit Account Dialog:**
+   - Same fields as Add dialog
+   - Fetches full account details on edit
+
+4. **Delete Confirmation Dialog**
+
+5. **Template Initialization:**
+   - Template selection dialog with multiple accounting standards
+   - New backend endpoint: POST /api/chart-of-accounts/templates/apply
+   - Applies comprehensive templates (90+ accounts each)
+
+6. **AccountRow Edit/Delete Buttons:**
+   - Edit button for all accounts
+   - Delete button for non-group accounts
+
+**Files Modified:**
+- `client/src/pages/ChartOfAccounts.tsx` - Complete CRUD implementation
+- `server/src/routes/chartOfAccounts.ts` - Added /templates/apply endpoint
+
+---
+
 ### 2025-02-09 (Session 4 - CRUD Delete & Template Fixes)
 
 **Delete Functionality Added:**
@@ -414,4 +494,4 @@ _Add notes during development sessions_
 
 ---
 
-*Last Updated: 2025-02-07*
+*Last Updated: 2025-02-09*

@@ -44,25 +44,21 @@ import {
 interface CompanyUser {
   id: string;
   userId: string;
+  email: string;
+  firstName: string;
+  lastName: string;
   role: string;
-  permissions: Record<string, boolean>;
+  isActive: boolean;
   createdAt: string;
-  user: {
-    id: string;
-    email: string;
-    firstName: string;
-    lastName: string;
-    isActive: boolean;
-  };
 }
 
 interface InvitedUser {
   id: string;
   email: string;
   role: string;
-  status: 'pending' | 'accepted' | 'expired';
-  invitedAt: string;
+  invitedBy: string;
   expiresAt: string;
+  createdAt: string;
 }
 
 const roles = [
@@ -84,7 +80,7 @@ export default function UserManagement() {
   const { data: users, isLoading } = useQuery<CompanyUser[]>({
     queryKey: ['company-users'],
     queryFn: async () => {
-      const response = await fetch('/api/companies/users', {
+      const response = await fetch('/api/users', {
         credentials: 'include',
       });
       if (!response.ok) return [];
@@ -96,7 +92,7 @@ export default function UserManagement() {
   const { data: invites } = useQuery<InvitedUser[]>({
     queryKey: ['company-invites'],
     queryFn: async () => {
-      const response = await fetch('/api/companies/invites', {
+      const response = await fetch('/api/users/invitations', {
         credentials: 'include',
       });
       if (!response.ok) return [];
@@ -107,7 +103,7 @@ export default function UserManagement() {
   // Invite user mutation
   const inviteMutation = useMutation({
     mutationFn: async (data: { email: string; role: string }) => {
-      const response = await fetch('/api/companies/invite', {
+      const response = await fetch('/api/users/invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -133,7 +129,7 @@ export default function UserManagement() {
   // Update user role mutation
   const updateRoleMutation = useMutation({
     mutationFn: async ({ userId, role }: { userId: string; role: string }) => {
-      const response = await fetch(`/api/companies/users/${userId}/role`, {
+      const response = await fetch(`/api/users/${userId}/role`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -156,7 +152,7 @@ export default function UserManagement() {
   // Remove user mutation
   const removeUserMutation = useMutation({
     mutationFn: async (userId: string) => {
-      const response = await fetch(`/api/companies/users/${userId}`, {
+      const response = await fetch(`/api/users/${userId}`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -175,7 +171,7 @@ export default function UserManagement() {
   // Cancel invite mutation
   const cancelInviteMutation = useMutation({
     mutationFn: async (inviteId: string) => {
-      const response = await fetch(`/api/companies/invites/${inviteId}`, {
+      const response = await fetch(`/api/users/invitations/${inviteId}`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -311,9 +307,9 @@ export default function UserManagement() {
                 {users.map((user) => (
                   <TableRow key={user.id}>
                     <TableCell className="font-medium">
-                      {user.user.firstName} {user.user.lastName}
+                      {user.firstName} {user.lastName}
                     </TableCell>
-                    <TableCell>{user.user.email}</TableCell>
+                    <TableCell>{user.email}</TableCell>
                     <TableCell>
                       <span
                         className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${getRoleColor(
@@ -324,7 +320,7 @@ export default function UserManagement() {
                       </span>
                     </TableCell>
                     <TableCell>
-                      {user.user.isActive ? (
+                      {user.isActive ? (
                         <span className="flex items-center gap-1 text-green-600">
                           <CheckCircle className="h-4 w-4" />
                           Active
@@ -389,7 +385,7 @@ export default function UserManagement() {
                 <TableRow>
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead>Invited By</TableHead>
                   <TableHead>Invited</TableHead>
                   <TableHead>Expires</TableHead>
                   <TableHead className="w-[100px]">Actions</TableHead>
@@ -408,28 +404,21 @@ export default function UserManagement() {
                         {invite.role}
                       </span>
                     </TableCell>
+                    <TableCell>{invite.invitedBy}</TableCell>
                     <TableCell>
-                      <span className="flex items-center gap-1 capitalize">
-                        {getStatusIcon(invite.status)}
-                        {invite.status}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      {new Date(invite.invitedAt).toLocaleDateString()}
+                      {new Date(invite.createdAt).toLocaleDateString()}
                     </TableCell>
                     <TableCell>
                       {new Date(invite.expiresAt).toLocaleDateString()}
                     </TableCell>
                     <TableCell>
-                      {invite.status === 'pending' && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => cancelInviteMutation.mutate(invite.id)}
-                        >
-                          <Trash2 className="h-4 w-4 text-red-500" />
-                        </Button>
-                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => cancelInviteMutation.mutate(invite.id)}
+                      >
+                        <Trash2 className="h-4 w-4 text-red-500" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -534,8 +523,8 @@ export default function UserManagement() {
           <DialogHeader>
             <DialogTitle>Edit User Role</DialogTitle>
             <DialogDescription>
-              Change the role for {selectedUser?.user.firstName}{' '}
-              {selectedUser?.user.lastName}
+              Change the role for {selectedUser?.firstName}{' '}
+              {selectedUser?.lastName}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
