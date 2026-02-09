@@ -6,7 +6,8 @@ const resend = process.env.RESEND_API_KEY
   : null;
 
 // Email configuration
-const FROM_EMAIL = process.env.EMAIL_FROM || 'Zara Books <noreply@zarabooks.app>';
+// Use Resend's test domain until custom domain is verified
+const FROM_EMAIL = process.env.EMAIL_FROM || 'Zara Books <onboarding@resend.dev>';
 const APP_URL = process.env.APP_URL || 'https://scintillating-stillness-production-02d4.up.railway.app';
 
 interface SendEmailOptions {
