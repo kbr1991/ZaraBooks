@@ -21,9 +21,14 @@
 - **UI:** Radix UI (shadcn/ui), Lucide icons
 - **Testing:** Vitest (123 tests: 74 unit + 49 integration)
 
-### Default Login
-- Email: `admin@example.com`
+### Default Login (Super Admin)
+- Email: `admin@zarabooks.com`
 - Password: `Admin@123`
+
+### New Portals
+- `/admin` - Super admin dashboard (requires super_admin role)
+- `/partner` - Partner portal (requires partner access)
+- `/partner/register` - Partner registration (public)
 
 ---
 
@@ -534,4 +539,62 @@ _Add notes during development sessions_
 
 ---
 
-*Last Updated: 2026-02-09*
+### 2026-02-10 (Session 9 - Multi-Tenancy & Partner Program)
+
+**Major Feature: Multi-Tenancy with Partner/Reseller Program**
+
+New hierarchy: Partner (optional) → Tenant → Company → Data
+
+**Database Schema (8 new tables):**
+- `partners` - CA firms/resellers with tier system (bronze/silver/gold/platinum)
+- `tenants` - Subscribing organizations (billable entities)
+- `partner_users` - Partner staff with roles
+- `tenant_users` - Tenant access control
+- `subscription_plans` - Plan definitions (free/starter/professional/enterprise)
+- `subscriptions` - Subscription records
+- `commissions` - Partner earnings tracking
+- `partner_payouts` - Payout processing
+
+**Backend Routes:**
+- `/api/admin/*` - Platform management (dashboard, tenants, partners, subscriptions, commissions, payouts)
+- `/api/partner/*` - Partner portal (dashboard, clients, commissions, payouts, team)
+- `/api/tenant/*` - Tenant management (dashboard, companies, users, subscription)
+
+**Frontend Pages:**
+- Admin portal: Dashboard, Tenants, Partners, Subscriptions, Commissions, Payouts
+- Partner portal: Dashboard, Clients, Commissions, Payouts, Team, Register
+- Layouts: AdminLayout.tsx, PartnerLayout.tsx
+
+**Auth Enhancements:**
+- Multi-context login (super_admin, partner, tenant)
+- New middleware: requireTenant, requirePartner, requireSuperAdmin
+- Context switching between partner and tenant modes
+
+**Files Added (38 files):**
+- `server/src/routes/admin/*.ts` (7 files)
+- `server/src/routes/partner/*.ts` (7 files)
+- `server/src/routes/tenant/*.ts` (5 files)
+- `client/src/pages/admin/*.tsx` (6 files)
+- `client/src/pages/partner/*.tsx` (6 files)
+- `client/src/components/layout/AdminLayout.tsx`
+- `client/src/components/layout/PartnerLayout.tsx`
+
+**Files Modified:**
+- `shared/schema.ts` - Added 8 new tables, relations, and tenantId to companies
+- `server/src/middleware/auth.ts` - Extended session, new middleware
+- `server/src/routes/auth.ts` - Multi-context login flow
+- `server/src/index.ts` - Registered new routes
+- `client/src/App.tsx` - Added admin/partner routes with guards
+
+**Deployment:**
+- Pushed to GitHub and Railway
+- Database schema updated
+
+**Pending:**
+- Create test user with correct email for login
+- Seed initial subscription plans
+- Test partner registration flow
+
+---
+
+*Last Updated: 2026-02-10*
