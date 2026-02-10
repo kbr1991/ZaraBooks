@@ -1,13 +1,13 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { db } from '../db';
-import { users, companyUsers, companies } from '@shared/schema';
+import { users, companyUsers, companies, partnerUsers, tenantUsers, tenants, partners } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 
 const router = Router();
 
-// Login
+// Login - Enhanced with multi-tenancy context detection
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -30,7 +30,25 @@ router.post('/login', async (req, res) => {
       .set({ lastLogin: new Date() })
       .where(eq(users.id, user.id));
 
-    // Get user's companies
+    // Check partner access
+    const partnerUser = await db.query.partnerUsers.findFirst({
+      where: and(
+        eq(partnerUsers.userId, user.id),
+        eq(partnerUsers.isActive, true)
+      ),
+      with: { partner: true },
+    });
+
+    // Check tenant access
+    const tenantUsersList = await db.query.tenantUsers.findMany({
+      where: and(
+        eq(tenantUsers.userId, user.id),
+        eq(tenantUsers.isActive, true)
+      ),
+      with: { tenant: true },
+    });
+
+    // Get user's companies with tenant info
     const userCompanies = await db.query.companyUsers.findMany({
       where: and(
         eq(companyUsers.userId, user.id),
@@ -44,14 +62,37 @@ router.post('/login', async (req, res) => {
     // Set session
     req.session.userId = user.id;
 
+    // Set context based on user type
+    if (user.role === 'super_admin') {
+      req.session.userType = 'super_admin';
+    } else if (partnerUser) {
+      req.session.partnerId = partnerUser.partnerId;
+      req.session.userType = 'partner';
+    }
+
+    // Auto-select single tenant
+    if (tenantUsersList.length === 1) {
+      req.session.tenantId = tenantUsersList[0].tenantId;
+    }
+
     // If user has only one company, auto-select it
     if (userCompanies.length === 1) {
       req.session.companyId = userCompanies[0].companyId;
+      // Also set tenant from company if it has one
+      if (userCompanies[0].company.tenantId) {
+        req.session.tenantId = userCompanies[0].company.tenantId;
+      }
     }
 
     const { password: _, ...userWithoutPassword } = user;
     res.json({
       user: userWithoutPassword,
+      userType: req.session.userType || 'tenant',
+      partner: partnerUser?.partner || null,
+      tenants: tenantUsersList.map(tu => ({
+        ...tu.tenant,
+        role: tu.role,
+      })),
       companies: userCompanies.map(uc => ({
         ...uc.company,
         role: uc.role,
@@ -66,7 +107,7 @@ router.post('/login', async (req, res) => {
 // Register
 router.post('/register', async (req, res) => {
   try {
-    const { email, password, firstName, lastName, phone } = req.body;
+    const { email, password, firstName, lastName, phone, referralCode } = req.body;
 
     // Check if user exists
     const existing = await db.query.users.findFirst({
@@ -91,17 +132,50 @@ router.post('/register', async (req, res) => {
       isActive: true,
     }).returning();
 
+    // If referral code provided, look up partner
+    let partnerRef = null;
+    if (referralCode) {
+      partnerRef = await db.query.partners.findFirst({
+        where: and(
+          eq(partners.referralCode, referralCode),
+          eq(partners.isActive, true)
+        ),
+      });
+    }
+
+    // Create a default tenant for new users
+    const [newTenant] = await db.insert(tenants).values({
+      name: `${firstName}'s Organization`,
+      slug: `${email.toLowerCase().split('@')[0]}-${Date.now()}`,
+      billingEmail: email.toLowerCase(),
+      subscriptionPlan: 'free',
+      partnerId: partnerRef?.id,
+      referralCode: referralCode || null,
+    }).returning();
+
+    // Add user as tenant admin
+    await db.insert(tenantUsers).values({
+      tenantId: newTenant.id,
+      userId: newUser.id,
+      role: 'admin',
+    });
+
     req.session.userId = newUser.id;
+    req.session.tenantId = newTenant.id;
+    req.session.userType = 'tenant';
 
     const { password: _, ...userWithoutPassword } = newUser;
-    res.status(201).json({ user: userWithoutPassword });
+    res.status(201).json({
+      user: userWithoutPassword,
+      tenant: newTenant,
+    });
   } catch (error) {
     console.error('Registration error:', error);
     res.status(500).json({ error: 'Registration failed' });
   }
 });
 
-// Get current user
+// Get current user - Enhanced with multi-tenancy context
 router.get('/me', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const user = await db.query.users.findFirst({
@@ -111,6 +185,24 @@ router.get('/me', requireAuth, async (req: AuthenticatedRequest, res) => {
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
+
+    // Get partner access if any
+    const partnerUser = await db.query.partnerUsers.findFirst({
+      where: and(
+        eq(partnerUsers.userId, user.id),
+        eq(partnerUsers.isActive, true)
+      ),
+      with: { partner: true },
+    });
+
+    // Get tenant access
+    const tenantUsersList = await db.query.tenantUsers.findMany({
+      where: and(
+        eq(tenantUsers.userId, user.id),
+        eq(tenantUsers.isActive, true)
+      ),
+      with: { tenant: true },
+    });
 
     // Get user's companies
     const userCompanies = await db.query.companyUsers.findMany({
@@ -134,9 +226,29 @@ router.get('/me', requireAuth, async (req: AuthenticatedRequest, res) => {
       }
     }
 
+    // Get current tenant if selected
+    let currentTenant = null;
+    let currentTenantRole = null;
+    if (req.tenantId) {
+      const tenantUser = tenantUsersList.find(tu => tu.tenantId === req.tenantId);
+      if (tenantUser) {
+        currentTenant = tenantUser.tenant;
+        currentTenantRole = tenantUser.role;
+      }
+    }
+
     const { password: _, ...userWithoutPassword } = user;
     res.json({
       user: userWithoutPassword,
+      userType: req.userType || (user.role === 'super_admin' ? 'super_admin' : 'tenant'),
+      partner: partnerUser?.partner || null,
+      partnerRole: partnerUser?.role || null,
+      tenants: tenantUsersList.map(tu => ({
+        ...tu.tenant,
+        role: tu.role,
+      })),
+      currentTenant,
+      currentTenantRole,
       companies: userCompanies.map(uc => ({
         ...uc.company,
         role: uc.role,
@@ -172,6 +284,12 @@ router.post('/select-company', requireAuth, async (req: AuthenticatedRequest, re
     }
 
     req.session.companyId = companyId;
+
+    // Also set tenant from company if it has one
+    if (companyUser.company.tenantId) {
+      req.session.tenantId = companyUser.company.tenantId;
+    }
+
     res.json({
       company: companyUser.company,
       role: companyUser.role,
@@ -179,6 +297,83 @@ router.post('/select-company', requireAuth, async (req: AuthenticatedRequest, re
   } catch (error) {
     console.error('Select company error:', error);
     res.status(500).json({ error: 'Failed to select company' });
+  }
+});
+
+// Select tenant
+router.post('/select-tenant', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { tenantId } = req.body;
+
+    // Verify user has access to this tenant
+    const tenantUser = await db.query.tenantUsers.findFirst({
+      where: and(
+        eq(tenantUsers.userId, req.userId!),
+        eq(tenantUsers.tenantId, tenantId),
+        eq(tenantUsers.isActive, true)
+      ),
+      with: {
+        tenant: true,
+      },
+    });
+
+    if (!tenantUser) {
+      return res.status(403).json({ error: 'Access denied to this tenant' });
+    }
+
+    req.session.tenantId = tenantId;
+    // Clear company selection when switching tenants
+    req.session.companyId = undefined;
+
+    res.json({
+      tenant: tenantUser.tenant,
+      role: tenantUser.role,
+    });
+  } catch (error) {
+    console.error('Select tenant error:', error);
+    res.status(500).json({ error: 'Failed to select tenant' });
+  }
+});
+
+// Switch to partner context
+router.post('/switch-to-partner', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    // Verify user is a partner user
+    const partnerUser = await db.query.partnerUsers.findFirst({
+      where: and(
+        eq(partnerUsers.userId, req.userId!),
+        eq(partnerUsers.isActive, true)
+      ),
+      with: { partner: true },
+    });
+
+    if (!partnerUser) {
+      return res.status(403).json({ error: 'Not a partner user' });
+    }
+
+    req.session.partnerId = partnerUser.partnerId;
+    req.session.userType = 'partner';
+
+    res.json({
+      partner: partnerUser.partner,
+      role: partnerUser.role,
+    });
+  } catch (error) {
+    console.error('Switch to partner error:', error);
+    res.status(500).json({ error: 'Failed to switch to partner context' });
+  }
+});
+
+// Switch back to tenant context
+router.post('/switch-to-tenant', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    req.session.partnerId = undefined;
+    req.session.userType = 'tenant';
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Switch to tenant error:', error);
+    res.status(500).json({ error: 'Failed to switch to tenant context' });
   }
 });
 

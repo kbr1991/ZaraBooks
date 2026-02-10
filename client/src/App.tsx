@@ -6,6 +6,8 @@ import { ThemeProvider } from '@/components/theme-provider';
 
 // Layout - not lazy loaded as it's used immediately
 import MainLayout from '@/components/layout/MainLayout';
+import AdminLayout from '@/components/layout/AdminLayout';
+import PartnerLayout from '@/components/layout/PartnerLayout';
 
 // Auth pages - loaded immediately as they're entry points
 import Login from '@/pages/Login';
@@ -67,6 +69,22 @@ const DocumentTemplates = lazy(() => import('@/pages/DocumentTemplates'));
 
 // Public pages
 const AcceptInvite = lazy(() => import('@/pages/AcceptInvite'));
+
+// Admin pages
+const AdminDashboard = lazy(() => import('@/pages/admin/Dashboard'));
+const AdminTenants = lazy(() => import('@/pages/admin/Tenants'));
+const AdminPartners = lazy(() => import('@/pages/admin/Partners'));
+const AdminSubscriptions = lazy(() => import('@/pages/admin/Subscriptions'));
+const AdminCommissions = lazy(() => import('@/pages/admin/Commissions'));
+const AdminPayouts = lazy(() => import('@/pages/admin/Payouts'));
+
+// Partner pages
+const PartnerDashboard = lazy(() => import('@/pages/partner/Dashboard'));
+const PartnerClients = lazy(() => import('@/pages/partner/Clients'));
+const PartnerCommissions = lazy(() => import('@/pages/partner/Commissions'));
+const PartnerPayouts = lazy(() => import('@/pages/partner/Payouts'));
+const PartnerTeam = lazy(() => import('@/pages/partner/Team'));
+const PartnerRegister = lazy(() => import('@/pages/partner/Register'));
 
 // Loading fallback component
 function PageLoader() {
@@ -133,6 +151,50 @@ function RequireCompany({ children }: { children: React.ReactNode }) {
 
   if (!auth?.currentCompany) {
     return <Navigate to="/companies" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+function RequireSuperAdmin({ children }: { children: React.ReactNode }) {
+  const { data: auth, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  if (!auth?.user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (auth?.userType !== 'super_admin') {
+    return <Navigate to="/" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+function RequirePartner({ children }: { children: React.ReactNode }) {
+  const { data: auth, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  if (!auth?.user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (!auth?.partner) {
+    return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;
@@ -363,6 +425,90 @@ export default function App() {
             </Suspense>
           } />
         </Route>
+
+        {/* Admin routes */}
+        <Route
+          path="/admin"
+          element={
+            <RequireSuperAdmin>
+              <AdminLayout />
+            </RequireSuperAdmin>
+          }
+        >
+          <Route index element={
+            <Suspense fallback={<PageLoader />}>
+              <AdminDashboard />
+            </Suspense>
+          } />
+          <Route path="tenants" element={
+            <Suspense fallback={<PageLoader />}>
+              <AdminTenants />
+            </Suspense>
+          } />
+          <Route path="partners" element={
+            <Suspense fallback={<PageLoader />}>
+              <AdminPartners />
+            </Suspense>
+          } />
+          <Route path="subscriptions" element={
+            <Suspense fallback={<PageLoader />}>
+              <AdminSubscriptions />
+            </Suspense>
+          } />
+          <Route path="commissions" element={
+            <Suspense fallback={<PageLoader />}>
+              <AdminCommissions />
+            </Suspense>
+          } />
+          <Route path="payouts" element={
+            <Suspense fallback={<PageLoader />}>
+              <AdminPayouts />
+            </Suspense>
+          } />
+        </Route>
+
+        {/* Partner routes */}
+        <Route
+          path="/partner"
+          element={
+            <RequirePartner>
+              <PartnerLayout />
+            </RequirePartner>
+          }
+        >
+          <Route index element={
+            <Suspense fallback={<PageLoader />}>
+              <PartnerDashboard />
+            </Suspense>
+          } />
+          <Route path="clients" element={
+            <Suspense fallback={<PageLoader />}>
+              <PartnerClients />
+            </Suspense>
+          } />
+          <Route path="commissions" element={
+            <Suspense fallback={<PageLoader />}>
+              <PartnerCommissions />
+            </Suspense>
+          } />
+          <Route path="payouts" element={
+            <Suspense fallback={<PageLoader />}>
+              <PartnerPayouts />
+            </Suspense>
+          } />
+          <Route path="team" element={
+            <Suspense fallback={<PageLoader />}>
+              <PartnerTeam />
+            </Suspense>
+          } />
+        </Route>
+
+        {/* Partner registration (public) */}
+        <Route path="/partner/register" element={
+          <Suspense fallback={<PageLoader />}>
+            <PartnerRegister />
+          </Suspense>
+        } />
 
         {/* Catch all */}
         <Route path="*" element={<Navigate to="/" replace />} />

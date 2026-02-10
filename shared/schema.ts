@@ -95,6 +95,8 @@ export const companies = pgTable('companies', {
   name: varchar('name', { length: 255 }).notNull(),
   legalName: varchar('legal_name', { length: 255 }),
   companyType: varchar('company_type', { length: 50 }), // private_limited, llp, partnership, proprietorship, etc.
+  // Multi-tenancy
+  tenantId: varchar('tenant_id', { length: 36 }), // Will reference tenants table after it's created
   // Indian Compliance Fields
   pan: varchar('pan', { length: 10 }).unique(),
   gstin: varchar('gstin', { length: 15 }),
@@ -119,7 +121,9 @@ export const companies = pgTable('companies', {
   createdByUserId: varchar('created_by_user_id', { length: 36 }).references(() => users.id),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+}, (table) => [
+  index('idx_companies_tenant').on(table.tenantId),
+]);
 
 // ==================== COMPANY USERS ====================
 export const companyUsers = pgTable('company_users', {
@@ -867,12 +871,18 @@ export const aiConversations = pgTable('ai_conversations', {
 export const usersRelations = relations(users, ({ many }) => ({
   companyUsers: many(companyUsers),
   createdCompanies: many(companies),
+  partnerUsers: many(partnerUsers),
+  tenantUsers: many(tenantUsers),
 }));
 
 export const companiesRelations = relations(companies, ({ one, many }) => ({
   createdBy: one(users, {
     fields: [companies.createdByUserId],
     references: [users.id],
+  }),
+  tenant: one(tenants, {
+    fields: [companies.tenantId],
+    references: [tenants.id],
   }),
   companyUsers: many(companyUsers),
   fiscalYears: many(fiscalYears),
@@ -1607,6 +1617,177 @@ export const bankReconciliationLines = pgTable('bank_reconciliation_lines', {
   reconciledAt: timestamp('reconciled_at'),
 });
 
+// ==================== MULTI-TENANCY & PARTNER PROGRAM ====================
+
+// Partner Tier Enum
+export const partnerTierEnum = pgEnum('partner_tier', ['bronze', 'silver', 'gold', 'platinum']);
+export const partnerVerificationStatusEnum = pgEnum('partner_verification_status', ['pending', 'verified', 'rejected']);
+export const subscriptionStatusEnum = pgEnum('subscription_status', ['active', 'cancelled', 'expired', 'past_due', 'trialing']);
+export const commissionStatusEnum = pgEnum('commission_status', ['pending', 'approved', 'paid', 'cancelled']);
+export const payoutStatusEnum = pgEnum('payout_status', ['pending', 'processing', 'completed', 'failed']);
+export const billingCycleEnum = pgEnum('billing_cycle', ['monthly', 'yearly']);
+
+// 1. PARTNERS - CA firms, resellers
+export const partners = pgTable('partners', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar('name', { length: 255 }).notNull(),
+  slug: varchar('slug', { length: 100 }).unique().notNull(),
+
+  // Contact
+  primaryEmail: varchar('primary_email', { length: 255 }).notNull(),
+  primaryPhone: varchar('primary_phone', { length: 20 }),
+  address: text('address'),
+  city: varchar('city', { length: 100 }),
+  state: varchar('state', { length: 100 }),
+
+  // Compliance
+  pan: varchar('pan', { length: 10 }),
+  gstin: varchar('gstin', { length: 15 }),
+
+  // Program
+  tier: partnerTierEnum('tier').default('bronze'),
+  commissionRate: decimal('commission_rate', { precision: 5, scale: 2 }).default('10.00'),
+  referralCode: varchar('referral_code', { length: 50 }).unique().notNull(),
+
+  // Bank details
+  bankAccountName: varchar('bank_account_name', { length: 255 }),
+  bankAccountNumber: varchar('bank_account_number', { length: 50 }),
+  bankIfsc: varchar('bank_ifsc', { length: 11 }),
+
+  // Status
+  verificationStatus: partnerVerificationStatusEnum('verification_status').default('pending'),
+  verifiedAt: timestamp('verified_at'),
+
+  isActive: boolean('is_active').default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// 2. TENANTS - Subscribing organizations (billable entity)
+export const tenants = pgTable('tenants', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar('name', { length: 255 }).notNull(),
+  slug: varchar('slug', { length: 100 }).unique().notNull(),
+  billingEmail: varchar('billing_email', { length: 255 }),
+  gstNumber: varchar('gst_number', { length: 15 }),
+
+  // Subscription
+  subscriptionPlan: varchar('subscription_plan', { length: 50 }).default('free'),
+  subscriptionStatus: subscriptionStatusEnum('subscription_status').default('active'),
+  trialEndsAt: timestamp('trial_ends_at'),
+
+  // Partner reference
+  partnerId: varchar('partner_id', { length: 36 }).references(() => partners.id),
+  referralCode: varchar('referral_code', { length: 50 }),
+
+  // Limits
+  maxCompanies: integer('max_companies').default(1),
+  maxUsersPerCompany: integer('max_users_per_company').default(3),
+
+  isActive: boolean('is_active').default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// 3. PARTNER_USERS - Partner staff
+export const partnerUsers = pgTable('partner_users', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  partnerId: varchar('partner_id', { length: 36 }).references(() => partners.id, { onDelete: 'cascade' }).notNull(),
+  userId: varchar('user_id', { length: 36 }).references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  role: varchar('role', { length: 20 }).default('staff').notNull(), // admin, staff
+  isActive: boolean('is_active').default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [uniqueIndex('idx_partner_user').on(table.partnerId, table.userId)]);
+
+// 4. TENANT_USERS - Tenant-level access
+export const tenantUsers = pgTable('tenant_users', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar('tenant_id', { length: 36 }).references(() => tenants.id, { onDelete: 'cascade' }).notNull(),
+  userId: varchar('user_id', { length: 36 }).references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  role: varchar('role', { length: 20 }).default('user').notNull(), // admin, user
+  isActive: boolean('is_active').default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [uniqueIndex('idx_tenant_user').on(table.tenantId, table.userId)]);
+
+// 5. SUBSCRIPTION_PLANS
+export const subscriptionPlans = pgTable('subscription_plans', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  code: varchar('code', { length: 50 }).unique().notNull(),
+  name: varchar('name', { length: 100 }).notNull(),
+  monthlyPrice: decimal('monthly_price', { precision: 18, scale: 2 }).notNull(),
+  yearlyPrice: decimal('yearly_price', { precision: 18, scale: 2 }).notNull(),
+  maxCompanies: integer('max_companies').notNull(),
+  maxUsersPerCompany: integer('max_users_per_company').notNull(),
+  features: jsonb('features').default([]),
+  isActive: boolean('is_active').default(true),
+  displayOrder: integer('display_order').default(0),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// 6. SUBSCRIPTIONS - Subscription history
+export const subscriptions = pgTable('subscriptions', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar('tenant_id', { length: 36 }).references(() => tenants.id, { onDelete: 'cascade' }).notNull(),
+  planCode: varchar('plan_code', { length: 50 }).notNull(),
+  status: subscriptionStatusEnum('status').notNull(),
+  billingCycle: billingCycleEnum('billing_cycle').notNull(),
+  currentPeriodStart: timestamp('current_period_start').notNull(),
+  currentPeriodEnd: timestamp('current_period_end').notNull(),
+  amount: decimal('amount', { precision: 18, scale: 2 }).notNull(),
+
+  // Partner commission
+  partnerId: varchar('partner_id', { length: 36 }).references(() => partners.id),
+  commissionRate: decimal('commission_rate', { precision: 5, scale: 2 }),
+
+  // Payment gateway
+  externalId: varchar('external_id', { length: 100 }),
+  gateway: varchar('gateway', { length: 50 }),
+
+  cancelledAt: timestamp('cancelled_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_subscriptions_tenant').on(table.tenantId),
+  index('idx_subscriptions_partner').on(table.partnerId),
+]);
+
+// 7. COMMISSIONS - Partner earnings
+export const commissions = pgTable('commissions', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  partnerId: varchar('partner_id', { length: 36 }).references(() => partners.id, { onDelete: 'cascade' }).notNull(),
+  tenantId: varchar('tenant_id', { length: 36 }).references(() => tenants.id).notNull(),
+  subscriptionId: varchar('subscription_id', { length: 36 }).references(() => subscriptions.id),
+  subscriptionAmount: decimal('subscription_amount', { precision: 18, scale: 2 }).notNull(),
+  commissionRate: decimal('commission_rate', { precision: 5, scale: 2 }).notNull(),
+  commissionAmount: decimal('commission_amount', { precision: 18, scale: 2 }).notNull(),
+  periodStart: date('period_start').notNull(),
+  periodEnd: date('period_end').notNull(),
+  status: commissionStatusEnum('status').default('pending'),
+  payoutId: varchar('payout_id', { length: 36 }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_commissions_partner').on(table.partnerId),
+  index('idx_commissions_status').on(table.status),
+]);
+
+// 8. PARTNER_PAYOUTS
+export const partnerPayouts = pgTable('partner_payouts', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  partnerId: varchar('partner_id', { length: 36 }).references(() => partners.id, { onDelete: 'cascade' }).notNull(),
+  totalAmount: decimal('total_amount', { precision: 18, scale: 2 }).notNull(),
+  tdsAmount: decimal('tds_amount', { precision: 18, scale: 2 }).default('0'),
+  netAmount: decimal('net_amount', { precision: 18, scale: 2 }).notNull(),
+  paymentMethod: varchar('payment_method', { length: 50 }),
+  paymentReference: varchar('payment_reference', { length: 100 }),
+  periodStart: date('period_start').notNull(),
+  periodEnd: date('period_end').notNull(),
+  status: payoutStatusEnum('status').default('pending'),
+  processedAt: timestamp('processed_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_payouts_partner').on(table.partnerId),
+  index('idx_payouts_status').on(table.status),
+]);
+
 // ==================== NEW RELATIONS ====================
 
 export const productsRelations = relations(products, ({ one }) => ({
@@ -1953,6 +2134,90 @@ export const bankReconciliationLinesRelations = relations(bankReconciliationLine
   }),
 }));
 
+// ==================== MULTI-TENANCY RELATIONS ====================
+
+export const partnersRelations = relations(partners, ({ many }) => ({
+  partnerUsers: many(partnerUsers),
+  tenants: many(tenants),
+  subscriptions: many(subscriptions),
+  commissions: many(commissions),
+  payouts: many(partnerPayouts),
+}));
+
+export const tenantsRelations = relations(tenants, ({ one, many }) => ({
+  partner: one(partners, {
+    fields: [tenants.partnerId],
+    references: [partners.id],
+  }),
+  tenantUsers: many(tenantUsers),
+  companies: many(companies),
+  subscriptions: many(subscriptions),
+  commissions: many(commissions),
+}));
+
+export const partnerUsersRelations = relations(partnerUsers, ({ one }) => ({
+  partner: one(partners, {
+    fields: [partnerUsers.partnerId],
+    references: [partners.id],
+  }),
+  user: one(users, {
+    fields: [partnerUsers.userId],
+    references: [users.id],
+  }),
+}));
+
+export const tenantUsersRelations = relations(tenantUsers, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [tenantUsers.tenantId],
+    references: [tenants.id],
+  }),
+  user: one(users, {
+    fields: [tenantUsers.userId],
+    references: [users.id],
+  }),
+}));
+
+export const subscriptionPlansRelations = relations(subscriptionPlans, ({ }) => ({}));
+
+export const subscriptionsRelations = relations(subscriptions, ({ one, many }) => ({
+  tenant: one(tenants, {
+    fields: [subscriptions.tenantId],
+    references: [tenants.id],
+  }),
+  partner: one(partners, {
+    fields: [subscriptions.partnerId],
+    references: [partners.id],
+  }),
+  commissions: many(commissions),
+}));
+
+export const commissionsRelations = relations(commissions, ({ one }) => ({
+  partner: one(partners, {
+    fields: [commissions.partnerId],
+    references: [partners.id],
+  }),
+  tenant: one(tenants, {
+    fields: [commissions.tenantId],
+    references: [tenants.id],
+  }),
+  subscription: one(subscriptions, {
+    fields: [commissions.subscriptionId],
+    references: [subscriptions.id],
+  }),
+  payout: one(partnerPayouts, {
+    fields: [commissions.payoutId],
+    references: [partnerPayouts.id],
+  }),
+}));
+
+export const partnerPayoutsRelations = relations(partnerPayouts, ({ one, many }) => ({
+  partner: one(partners, {
+    fields: [partnerPayouts.partnerId],
+    references: [partners.id],
+  }),
+  commissions: many(commissions),
+}));
+
 // ==================== ZOD SCHEMAS ====================
 
 export const insertUserSchema = createInsertSchema(users).omit({
@@ -2219,6 +2484,52 @@ export const insertBankReconciliationLineSchema = createInsertSchema(bankReconci
   reconciledAt: true,
 });
 
+// Multi-tenancy Zod Schemas
+export const insertPartnerSchema = createInsertSchema(partners).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  verifiedAt: true,
+});
+
+export const insertTenantSchema = createInsertSchema(tenants).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertPartnerUserSchema = createInsertSchema(partnerUsers).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertTenantUserSchema = createInsertSchema(tenantUsers).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertSubscriptionPlanSchema = createInsertSchema(subscriptionPlans).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertSubscriptionSchema = createInsertSchema(subscriptions).omit({
+  id: true,
+  createdAt: true,
+  cancelledAt: true,
+});
+
+export const insertCommissionSchema = createInsertSchema(commissions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertPartnerPayoutSchema = createInsertSchema(partnerPayouts).omit({
+  id: true,
+  createdAt: true,
+  processedAt: true,
+});
+
 // ==================== TYPES ====================
 
 export type User = typeof users.$inferSelect;
@@ -2316,3 +2627,21 @@ export type BankReconciliation = typeof bankReconciliations.$inferSelect;
 export type InsertBankReconciliation = z.infer<typeof insertBankReconciliationSchema>;
 export type BankReconciliationLine = typeof bankReconciliationLines.$inferSelect;
 export type InsertBankReconciliationLine = z.infer<typeof insertBankReconciliationLineSchema>;
+
+// Multi-tenancy Types
+export type Partner = typeof partners.$inferSelect;
+export type InsertPartner = z.infer<typeof insertPartnerSchema>;
+export type Tenant = typeof tenants.$inferSelect;
+export type InsertTenant = z.infer<typeof insertTenantSchema>;
+export type PartnerUser = typeof partnerUsers.$inferSelect;
+export type InsertPartnerUser = z.infer<typeof insertPartnerUserSchema>;
+export type TenantUser = typeof tenantUsers.$inferSelect;
+export type InsertTenantUser = z.infer<typeof insertTenantUserSchema>;
+export type SubscriptionPlan = typeof subscriptionPlans.$inferSelect;
+export type InsertSubscriptionPlan = z.infer<typeof insertSubscriptionPlanSchema>;
+export type Subscription = typeof subscriptions.$inferSelect;
+export type InsertSubscription = z.infer<typeof insertSubscriptionSchema>;
+export type Commission = typeof commissions.$inferSelect;
+export type InsertCommission = z.infer<typeof insertCommissionSchema>;
+export type PartnerPayout = typeof partnerPayouts.$inferSelect;
+export type InsertPartnerPayout = z.infer<typeof insertPartnerPayoutSchema>;

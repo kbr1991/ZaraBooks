@@ -44,6 +44,11 @@ import paymentsMadeRoutes from './routes/paymentsMade';
 import bankReconciliationRoutes from './routes/bankReconciliation';
 import documentTemplatesRoutes from './routes/documentTemplates';
 
+// Multi-tenancy routes
+import adminRoutes from './routes/admin';
+import partnerRoutes from './routes/partner';
+import tenantRoutes from './routes/tenant';
+
 const { Pool } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -160,6 +165,11 @@ app.use('/api/payments-received', paymentsReceivedRoutes);
 app.use('/api/payments-made', paymentsMadeRoutes);
 app.use('/api/bank-reconciliation', bankReconciliationRoutes);
 app.use('/api/document-templates', documentTemplatesRoutes);
+
+// Multi-tenancy routes
+app.use('/api/admin', adminRoutes);
+app.use('/api/partner', partnerRoutes);
+app.use('/api/tenant', tenantRoutes);
 
 // Health check (basic - always returns ok for Railway health checks)
 app.get('/api/health', (_req: Request, res: Response) => {
