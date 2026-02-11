@@ -12,7 +12,7 @@
 | **Target Users** | CA firms, Startups (India) |
 | **Deployed URL** | https://scintillating-stillness-production-02d4.up.railway.app |
 | **Repository** | https://github.com/kbr1991/ZaraBooks |
-| **Current Version** | 1.3.0 |
+| **Current Version** | 1.4.0 |
 
 ### Tech Stack
 - **Frontend:** React 18, TypeScript, Tailwind CSS, React Query, React Router
@@ -597,4 +597,84 @@ New hierarchy: Partner (optional) → Tenant → Company → Data
 
 ---
 
-*Last Updated: 2026-02-10*
+### 2026-02-11 (Session 10 - Document Lifecycle: Download, Edit, Delete, Cancel)
+
+**Major Fix: Full Document Lifecycle for All Document Types**
+
+Previously, PurchaseOrders, Bills, CreditNotes, DebitNotes became unusable after being issued/sent - no download, no edit, no cancel. This session fixed all of it.
+
+**Phase 1 - Template System Extended (4 new document types):**
+- Added `purchase_order`, `bill`, `credit_note`, `debit_note` to `DocumentType` union
+- Added `getPartyLabel()` helper - returns "Vendor" for PO/bill/debit_note, "Bill To" for others
+- All 4 templates (classic, modern, professional, minimal) now use dynamic party labels
+- `TemplateSelector` component widened to accept all 7 document types
+
+**Phase 2 - Download/Print Added to 4 Pages:**
+- PurchaseOrders, Bills, CreditNotes, DebitNotes now have download/print dropdown in table row actions
+- Works for ALL statuses (not just draft)
+- Dropdown: Quick Download, Print, Choose Template
+- Uses TemplateSelector for template selection
+- Each page builds proper `DocumentData` with correct type, vendor/customer mapping, and date fields
+
+**Phase 3 - Edit Buttons Fixed on 3 Pages:**
+- PurchaseOrders: Edit works for draft + issued statuses, fetches full PO with lines, populates form
+- Bills: Edit works for draft + open statuses, fetches full bill with lines, populates form
+- SalesOrders: Edit works for open + confirmed statuses, fetches full SO with lines, populates form
+- All 3 use `updateMutation` with PATCH, `useEffect` to reset form on dialog close, conditional dialog title/footer
+
+**Phase 4 - Backend Restrictions Relaxed + Cancel Endpoints:**
+- `purchaseOrders.ts`: PATCH allows draft+issued, DELETE allows draft+issued (guards converted-to-bill), added `POST /:id/cancel`
+- `salesOrders.ts`: PATCH allows draft+confirmed, DELETE allows draft+confirmed (guards converted-to-invoice), added `POST /:id/cancel`
+- `invoices.ts`: Added `POST /:id/cancel` (sent only, no payments, reverses journal entries)
+- `bills.ts`: Added `POST /:id/cancel` (pending/open only, no payments, reverses journal entries)
+- `creditNotes.ts`: Added `POST /:id/cancel` (issued only, not applied, reverses journal entries)
+- `debitNotes.ts`: Added `POST /:id/cancel` (issued only, not applied, reverses journal entries)
+
+**Phase 5 - Cancel Buttons on All 6 Frontend Pages:**
+- PurchaseOrders: Cancel for issued/acknowledged (not converted to bill)
+- SalesOrders: Cancel for confirmed/processing (not converted to invoice)
+- Invoices: Cancel for sent (no payments, warns about journal reversal)
+- Bills: Cancel for pending/open (no payments, warns about journal reversal)
+- CreditNotes: Cancel for issued (not applied)
+- DebitNotes: Cancel for issued (not applied)
+
+**Files Modified (19 files, +1334/-94 lines):**
+- `client/src/components/document/TemplateSelector.tsx` - Widened documentType prop
+- `client/src/lib/document-templates/types.ts` - Extended DocumentType union
+- `client/src/lib/document-templates/index.ts` - Added getPartyLabel, extended getDocumentTitle/getDateLabel
+- `client/src/lib/document-templates/templates/classic.ts` - Dynamic party labels
+- `client/src/lib/document-templates/templates/modern.ts` - Dynamic party labels
+- `client/src/lib/document-templates/templates/professional.ts` - Dynamic party labels
+- `client/src/lib/document-templates/templates/minimal.ts` - Dynamic party labels
+- `client/src/pages/PurchaseOrders.tsx` - Download, edit, cancel
+- `client/src/pages/Bills.tsx` - Download, edit, cancel
+- `client/src/pages/CreditNotes.tsx` - Download, cancel
+- `client/src/pages/DebitNotes.tsx` - Download, cancel
+- `client/src/pages/Invoices.tsx` - Cancel
+- `client/src/pages/SalesOrders.tsx` - Edit, cancel
+- `server/src/routes/purchaseOrders.ts` - Relaxed PATCH/DELETE, cancel endpoint
+- `server/src/routes/salesOrders.ts` - Relaxed PATCH/DELETE, cancel endpoint
+- `server/src/routes/invoices.ts` - Cancel endpoint with journal reversal
+- `server/src/routes/bills.ts` - Cancel endpoint with journal reversal
+- `server/src/routes/creditNotes.ts` - Cancel endpoint with journal reversal
+- `server/src/routes/debitNotes.ts` - Cancel endpoint with journal reversal
+
+**Deployment:**
+- Pushed to GitHub (`bff6d08`)
+- Deployed to Railway via `railway up`
+
+**Document Lifecycle Status After This Session:**
+
+| Page | Download/Print | Edit | Delete | Cancel |
+|------|---------------|------|--------|--------|
+| PurchaseOrders | All statuses | Draft + Issued | Draft + Issued | Issued/Acknowledged |
+| Bills | All statuses | Draft + Open | Draft + Open | Pending/Open (no payments) |
+| CreditNotes | All statuses | - | Draft | Issued (not applied) |
+| DebitNotes | All statuses | - | Draft | Issued (not applied) |
+| SalesOrders | All statuses | Open + Confirmed | Draft + Confirmed | Confirmed/Processing |
+| Invoices | All statuses | Draft | Draft | Sent (no payments) |
+| Quotes | All statuses | Draft + Sent | Draft + Sent | N/A |
+
+---
+
+*Last Updated: 2026-02-11*
