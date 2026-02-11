@@ -1,10 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
 import {
   Building2,
   Search,
-  Filter,
   MoreHorizontal,
   ChevronLeft,
   ChevronRight,

@@ -4,19 +4,17 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { formatCurrency } from '@/lib/utils';
 import {
   TrendingUp,
   TrendingDown,
   RefreshCw,
-  Calendar,
   DollarSign,
   ArrowUpRight,
   ArrowDownRight,
   AlertTriangle,
-  CheckCircle,
   Clock,
   Target,
   Wallet,

@@ -41,12 +41,8 @@ import {
   CheckCircle,
   XCircle,
   Clock,
-  Settings,
   ExternalLink,
-  Copy,
-  Eye,
   Play,
-  Pause,
   Link2,
   AlertTriangle,
 } from 'lucide-react';

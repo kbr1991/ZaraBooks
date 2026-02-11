@@ -1,13 +1,10 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import {
   Building2,
-  User,
   Mail,
   Phone,
-  MapPin,
-  CreditCard,
   ArrowRight,
   CheckCircle,
   Loader2,
@@ -20,7 +17,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/hooks/use-toast';
 
 export default function PartnerRegister() {
-  const navigate = useNavigate();
   const { toast } = useToast();
   const [step, setStep] = useState(1);
   const [submitted, setSubmitted] = useState(false);

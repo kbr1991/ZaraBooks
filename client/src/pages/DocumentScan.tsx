@@ -21,24 +21,19 @@ import {
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { formatCurrency } from '@/lib/utils';
 import {
-  Camera,
   Upload,
   FileText,
   CheckCircle,
   Clock,
   XCircle,
-  Eye,
-  Plus,
   Wand2,
   Receipt,
   FileImage,
   Loader2,
   Search,
-  Filter,
   AlertCircle,
 } from 'lucide-react';
 

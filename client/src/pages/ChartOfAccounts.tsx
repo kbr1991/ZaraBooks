@@ -188,7 +188,7 @@ export default function ChartOfAccounts() {
   });
 
   // Fetch available templates
-  const { data: templatesData } = useQuery({
+  useQuery({
     queryKey: ['coa-templates'],
     queryFn: async () => {
       const response = await fetch('/api/chart-of-accounts/templates/list', {

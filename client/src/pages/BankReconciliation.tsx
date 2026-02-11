@@ -69,7 +69,7 @@ export default function BankReconciliation() {
   const [selectedTransactions, setSelectedTransactions] = useState<Set<string>>(new Set());
 
   // Fetch bank accounts
-  const { data: accounts, isLoading: accountsLoading } = useQuery<BankAccount[]>({
+  const { data: accounts } = useQuery<BankAccount[]>({
     queryKey: ['bank-accounts'],
     queryFn: async () => {
       const response = await fetch('/api/bank-accounts', {
@@ -99,7 +99,7 @@ export default function BankReconciliation() {
   });
 
   // Fetch reconciliation summary
-  const { data: summary } = useQuery<ReconciliationSummary>({
+  useQuery<ReconciliationSummary>({
     queryKey: ['bank-reconciliation-summary', selectedAccountId, statementDate, statementBalance],
     queryFn: async () => {
       if (!selectedAccountId || !statementBalance) return null;

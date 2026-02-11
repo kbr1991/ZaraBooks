@@ -9,7 +9,6 @@ import {
   UserPlus,
   LogOut,
   Menu,
-  X,
   ChevronRight,
   Building2,
 } from 'lucide-react';

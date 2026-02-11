@@ -30,7 +30,7 @@ export const minimalTemplate: TemplateFunction = (data: DocumentData): string =>
     : '';
 
   // Helper to clean address parts (remove trailing commas, extra spaces)
-  const cleanAddressPart = (part: string | undefined): string => {
+  const cleanAddressPart = (part: string | null | undefined): string => {
     if (!part) return '';
     return part.replace(/,+\s*$/, '').replace(/\s+/g, ' ').trim();
   };

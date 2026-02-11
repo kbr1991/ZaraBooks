@@ -1,11 +1,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Wallet,
   ChevronLeft,
   ChevronRight,
   Check,
-  X,
   Plus,
   Clock,
   CheckCircle,

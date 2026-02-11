@@ -38,7 +38,6 @@ import {
   Edit,
   CheckCircle,
   XCircle,
-  Clock,
 } from 'lucide-react';
 
 interface CompanyUser {
@@ -200,17 +199,6 @@ export default function UserManagement() {
     }
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'accepted':
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case 'expired':
-        return <XCircle className="h-4 w-4 text-red-500" />;
-      default:
-        return <Clock className="h-4 w-4 text-yellow-500" />;
-    }
-  };
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -263,7 +251,7 @@ export default function UserManagement() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {invites?.filter((i) => i.status === 'pending').length || 0}
+              {invites?.length || 0}
             </div>
           </CardContent>
         </Card>

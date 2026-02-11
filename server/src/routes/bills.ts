@@ -170,116 +170,111 @@ router.post('/', requireCompany, async (req: AuthenticatedRequest, res) => {
 
     const totalAmount = subtotal + totalTax;
 
-    // Create bill
-    const [bill] = await db.insert(bills).values({
-      companyId: req.companyId!,
-      fiscalYearId: fiscalYear.id,
-      billNumber,
-      vendorBillNumber,
-      billDate,
-      dueDate,
-      vendorId,
-      subtotal: subtotal.toString(),
-      taxAmount: totalTax.toString(),
-      cgst: totalCgst.toString(),
-      sgst: totalSgst.toString(),
-      totalAmount: totalAmount.toString(),
-      paidAmount: '0',
-      balanceDue: totalAmount.toString(),
-      status: 'pending',
-      notes,
-      createdByUserId: req.userId,
-    }).returning();
-
-    // Create line items
-    if (processedLines.length > 0) {
-      await db.insert(billLines).values(
-        processedLines.map((line: any) => ({
-          billId: bill.id,
-          ...line,
-        }))
-      );
-    }
-
-    // Create journal entry for the bill
-    const lastEntry = await db.query.journalEntries.findFirst({
-      where: eq(journalEntries.companyId, req.companyId!),
-      orderBy: desc(journalEntries.createdAt),
-    });
-
-    const nextNum = lastEntry
-      ? parseInt(lastEntry.entryNumber.split('/').pop() || '0', 10) + 1
-      : 1;
-    const entryNumber = `BILL/${fiscalYear.name.replace(/\s/g, '')}/${nextNum.toString().padStart(5, '0')}`;
-
-    // Get accounts payable account
-    const apAccount = await db.query.chartOfAccounts.findFirst({
-      where: and(
-        eq(chartOfAccounts.companyId, req.companyId!),
-        eq(chartOfAccounts.code, '2100') // Trade Payables
-      ),
-    });
-
-    if (apAccount) {
-      const [je] = await db.insert(journalEntries).values({
+    // Create bill, line items, and journal entry in a transaction
+    const completeBill = await db.transaction(async (tx) => {
+      const [bill] = await tx.insert(bills).values({
         companyId: req.companyId!,
         fiscalYearId: fiscalYear.id,
-        entryNumber,
-        entryDate: billDate,
-        entryType: 'auto_expense',
-        narration: `Bill ${billNumber}${vendorBillNumber ? ` (Vendor: ${vendorBillNumber})` : ''}`,
-        totalDebit: totalAmount.toString(),
-        totalCredit: totalAmount.toString(),
-        sourceType: 'bill',
-        sourceId: bill.id,
-        status: 'posted',
+        billNumber,
+        vendorBillNumber,
+        billDate,
+        dueDate,
+        vendorId,
+        subtotal: subtotal.toString(),
+        taxAmount: totalTax.toString(),
+        cgst: totalCgst.toString(),
+        sgst: totalSgst.toString(),
+        totalAmount: totalAmount.toString(),
+        paidAmount: '0',
+        balanceDue: totalAmount.toString(),
+        status: 'pending',
+        notes,
         createdByUserId: req.userId,
       }).returning();
 
-      // Journal entry lines
-      const jeLines = [];
+      if (processedLines.length > 0) {
+        await tx.insert(billLines).values(
+          processedLines.map((line: any) => ({
+            billId: bill.id,
+            ...line,
+          }))
+        );
+      }
 
-      // Credit: Accounts Payable
-      jeLines.push({
-        journalEntryId: je.id,
-        accountId: apAccount.id,
-        debitAmount: '0',
-        creditAmount: totalAmount.toString(),
-        partyType: 'vendor' as const,
-        partyId: vendorId,
-        description: `Bill ${billNumber}`,
+      // Create journal entry for the bill
+      const lastEntry = await tx.query.journalEntries.findFirst({
+        where: eq(journalEntries.companyId, req.companyId!),
+        orderBy: desc(journalEntries.createdAt),
       });
 
-      // Debit: Expense accounts for each line
-      for (const line of processedLines) {
-        if (line.accountId) {
-          jeLines.push({
-            journalEntryId: je.id,
-            accountId: line.accountId,
-            debitAmount: line.amount,
-            creditAmount: '0',
-            description: line.description,
-          });
+      const nextNum = lastEntry
+        ? parseInt(lastEntry.entryNumber.split('/').pop() || '0', 10) + 1
+        : 1;
+      const entryNumber = `BILL/${fiscalYear.name.replace(/\s/g, '')}/${nextNum.toString().padStart(5, '0')}`;
+
+      const apAccount = await tx.query.chartOfAccounts.findFirst({
+        where: and(
+          eq(chartOfAccounts.companyId, req.companyId!),
+          eq(chartOfAccounts.code, '2100')
+        ),
+      });
+
+      if (apAccount) {
+        const [je] = await tx.insert(journalEntries).values({
+          companyId: req.companyId!,
+          fiscalYearId: fiscalYear.id,
+          entryNumber,
+          entryDate: billDate,
+          entryType: 'auto_expense',
+          narration: `Bill ${billNumber}${vendorBillNumber ? ` (Vendor: ${vendorBillNumber})` : ''}`,
+          totalDebit: totalAmount.toString(),
+          totalCredit: totalAmount.toString(),
+          sourceType: 'bill',
+          sourceId: bill.id,
+          status: 'posted',
+          createdByUserId: req.userId,
+        }).returning();
+
+        const jeLines: any[] = [];
+
+        jeLines.push({
+          journalEntryId: je.id,
+          accountId: apAccount.id,
+          debitAmount: '0',
+          creditAmount: totalAmount.toString(),
+          partyType: 'vendor' as const,
+          partyId: vendorId,
+          description: `Bill ${billNumber}`,
+        });
+
+        for (const line of processedLines) {
+          if (line.accountId) {
+            jeLines.push({
+              journalEntryId: je.id,
+              accountId: line.accountId,
+              debitAmount: line.amount,
+              creditAmount: '0',
+              description: line.description,
+            });
+          }
         }
+
+        if (jeLines.length > 0) {
+          await tx.insert(journalEntryLines).values(jeLines);
+        }
+
+        await tx.update(bills)
+          .set({ journalEntryId: je.id })
+          .where(eq(bills.id, bill.id));
       }
 
-      if (jeLines.length > 0) {
-        await db.insert(journalEntryLines).values(jeLines);
-      }
-
-      // Update bill with journal entry id
-      await db.update(bills)
-        .set({ journalEntryId: je.id })
-        .where(eq(bills.id, bill.id));
-    }
-
-    // Fetch complete bill
-    const completeBill = await db.query.bills.findFirst({
-      where: eq(bills.id, bill.id),
-      with: {
-        vendor: true,
-        lines: true,
-      },
+      return await tx.query.bills.findFirst({
+        where: eq(bills.id, bill.id),
+        with: {
+          vendor: true,
+          lines: true,
+        },
+      });
     });
 
     res.status(201).json(completeBill);
@@ -384,97 +379,97 @@ router.post('/:id/record-payment', requireCompany, async (req: AuthenticatedRequ
       : 1;
     const paymentNumber = `PM-${fiscalYear.name.replace(/\s/g, '')}-${nextNum.toString().padStart(5, '0')}`;
 
-    // Create payment record
-    const [payment] = await db.insert(paymentsMade).values({
-      companyId: req.companyId!,
-      fiscalYearId: fiscalYear.id,
-      paymentNumber,
-      paymentDate: paymentDate || new Date().toISOString().split('T')[0],
-      vendorId: bill.vendorId,
-      amount: paymentAmount.toString(),
-      paymentMethod: paymentMode || 'bank',
-      referenceNumber,
-      bankAccountId,
-      notes: `Payment for Bill ${bill.billNumber}`,
-      createdByUserId: req.userId,
-    }).returning();
+    // Create payment, allocation, journal entry, and update bill in a transaction
+    const updated = await db.transaction(async (tx) => {
+      const [payment] = await tx.insert(paymentsMade).values({
+        companyId: req.companyId!,
+        fiscalYearId: fiscalYear.id,
+        paymentNumber,
+        paymentDate: paymentDate || new Date().toISOString().split('T')[0],
+        vendorId: bill.vendorId,
+        amount: paymentAmount.toString(),
+        paymentMethod: paymentMode || 'bank',
+        referenceNumber,
+        bankAccountId,
+        notes: `Payment for Bill ${bill.billNumber}`,
+        createdByUserId: req.userId,
+      }).returning();
 
-    // Create payment allocation
-    await db.insert(paymentMadeAllocations).values({
-      paymentMadeId: payment.id,
-      billId: bill.id,
-      amount: paymentAmount.toString(),
-    });
-
-    // Create journal entry for payment
-    if (bankAccountId) {
-      const lastEntry = await db.query.journalEntries.findFirst({
-        where: eq(journalEntries.companyId, req.companyId!),
-        orderBy: desc(journalEntries.createdAt),
+      await tx.insert(paymentMadeAllocations).values({
+        paymentMadeId: payment.id,
+        billId: bill.id,
+        amount: paymentAmount.toString(),
       });
 
-      const nextEntryNum = lastEntry
-        ? parseInt(lastEntry.entryNumber.split('/').pop() || '0', 10) + 1
-        : 1;
-      const entryNumber = `PAY/${fiscalYear.name.replace(/\s/g, '')}/${nextEntryNum.toString().padStart(5, '0')}`;
+      if (bankAccountId) {
+        const lastEntry = await tx.query.journalEntries.findFirst({
+          where: eq(journalEntries.companyId, req.companyId!),
+          orderBy: desc(journalEntries.createdAt),
+        });
 
-      const apAccount = await db.query.chartOfAccounts.findFirst({
-        where: and(
-          eq(chartOfAccounts.companyId, req.companyId!),
-          eq(chartOfAccounts.code, '2100')
-        ),
-      });
+        const nextEntryNum = lastEntry
+          ? parseInt(lastEntry.entryNumber.split('/').pop() || '0', 10) + 1
+          : 1;
+        const entryNumber = `PAY/${fiscalYear.name.replace(/\s/g, '')}/${nextEntryNum.toString().padStart(5, '0')}`;
 
-      if (apAccount) {
-        const [je] = await db.insert(journalEntries).values({
-          companyId: req.companyId!,
-          fiscalYearId: fiscalYear.id,
-          entryNumber,
-          entryDate: paymentDate || new Date().toISOString().split('T')[0],
-          entryType: 'auto_payment',
-          narration: `Payment made for Bill ${bill.billNumber} - ${bill.vendor.name}`,
-          totalDebit: paymentAmount.toString(),
-          totalCredit: paymentAmount.toString(),
-          status: 'posted',
-          createdByUserId: req.userId,
-        }).returning();
+        const apAccount = await tx.query.chartOfAccounts.findFirst({
+          where: and(
+            eq(chartOfAccounts.companyId, req.companyId!),
+            eq(chartOfAccounts.code, '2100')
+          ),
+        });
 
-        await db.insert(journalEntryLines).values([
-          {
-            journalEntryId: je.id,
-            accountId: apAccount.id,
-            debitAmount: paymentAmount.toString(),
-            creditAmount: '0',
-            partyType: 'vendor' as const,
-            partyId: bill.vendorId,
-            description: `Payment - ${bill.billNumber}`,
-          },
-          {
-            journalEntryId: je.id,
-            accountId: bankAccountId,
-            debitAmount: '0',
-            creditAmount: paymentAmount.toString(),
-            description: `Payment - ${referenceNumber || bill.billNumber}`,
-          },
-        ]);
+        if (apAccount) {
+          const [je] = await tx.insert(journalEntries).values({
+            companyId: req.companyId!,
+            fiscalYearId: fiscalYear.id,
+            entryNumber,
+            entryDate: paymentDate || new Date().toISOString().split('T')[0],
+            entryType: 'auto_payment',
+            narration: `Payment made for Bill ${bill.billNumber} - ${bill.vendor.name}`,
+            totalDebit: paymentAmount.toString(),
+            totalCredit: paymentAmount.toString(),
+            status: 'posted',
+            createdByUserId: req.userId,
+          }).returning();
 
-        // Update payment with journal entry
-        await db.update(paymentsMade)
-          .set({ journalEntryId: je.id })
-          .where(eq(paymentsMade.id, payment.id));
+          await tx.insert(journalEntryLines).values([
+            {
+              journalEntryId: je.id,
+              accountId: apAccount.id,
+              debitAmount: paymentAmount.toString(),
+              creditAmount: '0',
+              partyType: 'vendor' as const,
+              partyId: bill.vendorId,
+              description: `Payment - ${bill.billNumber}`,
+            },
+            {
+              journalEntryId: je.id,
+              accountId: bankAccountId,
+              debitAmount: '0',
+              creditAmount: paymentAmount.toString(),
+              description: `Payment - ${referenceNumber || bill.billNumber}`,
+            },
+          ]);
+
+          await tx.update(paymentsMade)
+            .set({ journalEntryId: je.id })
+            .where(eq(paymentsMade.id, payment.id));
+        }
       }
-    }
 
-    // Update bill
-    const [updated] = await db.update(bills)
-      .set({
-        paidAmount: newPaidAmount.toString(),
-        balanceDue: newBalanceDue.toString(),
-        status: newStatus,
-        updatedAt: new Date(),
-      })
-      .where(eq(bills.id, id))
-      .returning();
+      const [inv] = await tx.update(bills)
+        .set({
+          paidAmount: newPaidAmount.toString(),
+          balanceDue: newBalanceDue.toString(),
+          status: newStatus,
+          updatedAt: new Date(),
+        })
+        .where(eq(bills.id, id))
+        .returning();
+
+      return inv;
+    });
 
     res.json(updated);
   } catch (error) {
@@ -503,14 +498,14 @@ router.delete('/:id', requireCompany, async (req: AuthenticatedRequest, res) => 
       return res.status(400).json({ error: 'Only draft or pending bills can be deleted' });
     }
 
-    // If bill has a journal entry, delete it first
-    if (bill.journalEntryId) {
-      await db.delete(journalEntryLines).where(eq(journalEntryLines.journalEntryId, bill.journalEntryId));
-      await db.delete(journalEntries).where(eq(journalEntries.id, bill.journalEntryId));
-    }
-
-    await db.delete(billLines).where(eq(billLines.billId, id));
-    await db.delete(bills).where(eq(bills.id, id));
+    await db.transaction(async (tx) => {
+      if (bill.journalEntryId) {
+        await tx.delete(journalEntryLines).where(eq(journalEntryLines.journalEntryId, bill.journalEntryId));
+        await tx.delete(journalEntries).where(eq(journalEntries.id, bill.journalEntryId));
+      }
+      await tx.delete(billLines).where(eq(billLines.billId, id));
+      await tx.delete(bills).where(eq(bills.id, id));
+    });
 
     res.json({ message: 'Bill deleted' });
   } catch (error) {

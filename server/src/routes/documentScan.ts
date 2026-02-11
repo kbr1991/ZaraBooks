@@ -91,13 +91,57 @@ router.post('/upload', requireCompany, async (req: AuthenticatedRequest, res) =>
       return res.status(400).json({ error: 'File URL and document type required' });
     }
 
+    // Validate document type
+    const allowedDocTypes = ['invoice', 'bill', 'receipt', 'expense', 'credit_note', 'debit_note'];
+    if (!allowedDocTypes.includes(documentType)) {
+      return res.status(400).json({ error: `Invalid document type. Allowed: ${allowedDocTypes.join(', ')}` });
+    }
+
+    // Validate MIME type
+    const allowedMimeTypes = [
+      'application/pdf',
+      'image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/tiff',
+    ];
+    if (mimeType && !allowedMimeTypes.includes(mimeType)) {
+      return res.status(400).json({ error: `Invalid file type. Allowed: PDF, JPEG, PNG, WebP, TIFF` });
+    }
+
+    // Validate file size (max 10MB)
+    const maxFileSize = 10 * 1024 * 1024; // 10MB
+    if (fileSize && parseInt(fileSize) > maxFileSize) {
+      return res.status(400).json({ error: 'File size exceeds 10MB limit' });
+    }
+
+    // Validate file URL (must be HTTPS or relative path, no private IPs)
+    if (fileUrl) {
+      try {
+        const url = new URL(fileUrl, 'https://placeholder.com');
+        const hostname = url.hostname.toLowerCase();
+        const blockedHosts = ['localhost', '127.0.0.1', '0.0.0.0', '169.254.169.254'];
+        const isPrivateIP = /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(hostname);
+        if (blockedHosts.includes(hostname) || isPrivateIP) {
+          return res.status(400).json({ error: 'Invalid file URL' });
+        }
+      } catch {
+        // Allow relative URLs (e.g., /uploads/file.pdf)
+        if (!fileUrl.startsWith('/')) {
+          return res.status(400).json({ error: 'Invalid file URL format' });
+        }
+      }
+    }
+
+    // Sanitize file name
+    const sanitizedFileName = fileName
+      ? fileName.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 255)
+      : undefined;
+
     // Create document scan record
     const [scan] = await db.insert(documentScans)
       .values({
         companyId: req.companyId!,
         documentType,
         fileUrl,
-        fileName,
+        fileName: sanitizedFileName,
         mimeType,
         fileSize,
         source: source || 'upload',

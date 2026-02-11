@@ -39,7 +39,6 @@ import {
   Trash2,
   Wallet,
   TrendingUp,
-  TrendingDown,
   ArrowUpRight,
   ArrowDownLeft,
 } from 'lucide-react';

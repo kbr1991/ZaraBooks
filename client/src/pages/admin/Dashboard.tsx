@@ -5,7 +5,6 @@ import {
   DollarSign,
   TrendingUp,
   ArrowUpRight,
-  ArrowDownRight,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 

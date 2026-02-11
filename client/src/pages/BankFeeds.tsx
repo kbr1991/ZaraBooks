@@ -29,26 +29,17 @@ import {
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { formatCurrency } from '@/lib/utils';
 import {
-  Banknote,
-  RefreshCw,
   Search,
   Upload,
   CheckCircle,
   Clock,
   XCircle,
-  TrendingUp,
-  TrendingDown,
   Link2,
-  Unlink,
   Wand2,
   FileText,
-  Plus,
-  Filter,
-  Settings,
 } from 'lucide-react';
 
 interface BankFeedTransaction {

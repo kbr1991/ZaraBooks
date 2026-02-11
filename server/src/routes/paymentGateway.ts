@@ -14,6 +14,7 @@ import {
   handleWebhook,
   getGatewayConfig
 } from '../services/billing/paymentGateway';
+import { encryptJSON } from '../utils/crypto';
 
 const router = Router();
 
@@ -70,6 +71,12 @@ router.post('/config', requireCompany, async (req: AuthenticatedRequest, res) =>
       return res.status(400).json({ error: 'Gateway and credentials required' });
     }
 
+    // Validate gateway type
+    const allowedGateways = ['razorpay', 'payu', 'cashfree'];
+    if (!allowedGateways.includes(gateway)) {
+      return res.status(400).json({ error: `Invalid gateway. Allowed: ${allowedGateways.join(', ')}` });
+    }
+
     // Deactivate other configs for same gateway
     await db.update(paymentGatewayConfig)
       .set({ isActive: false, updatedAt: new Date() })
@@ -78,13 +85,17 @@ router.post('/config', requireCompany, async (req: AuthenticatedRequest, res) =>
         eq(paymentGatewayConfig.gateway, gateway)
       ));
 
+    // Encrypt credentials before storage
+    const encryptedCredentials = encryptJSON(credentials);
+    const encryptedWebhookSecret = webhookSecret ? encryptJSON(webhookSecret) : null;
+
     // Create new config
     const [config] = await db.insert(paymentGatewayConfig)
       .values({
         companyId: req.companyId!,
         gateway,
-        credentials: JSON.stringify(credentials),
-        webhookSecret,
+        credentials: encryptedCredentials,
+        webhookSecret: encryptedWebhookSecret,
         settings,
         isActive: true
       })
@@ -107,8 +118,8 @@ router.patch('/config/:id', requireCompany, async (req: AuthenticatedRequest, re
     const { credentials, webhookSecret, settings, isActive } = req.body;
 
     const updates: any = { updatedAt: new Date() };
-    if (credentials) updates.credentials = JSON.stringify(credentials);
-    if (webhookSecret !== undefined) updates.webhookSecret = webhookSecret;
+    if (credentials) updates.credentials = encryptJSON(credentials);
+    if (webhookSecret !== undefined) updates.webhookSecret = webhookSecret ? encryptJSON(webhookSecret) : null;
     if (settings !== undefined) updates.settings = settings;
     if (isActive !== undefined) updates.isActive = isActive;
 

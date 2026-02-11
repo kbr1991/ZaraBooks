@@ -24,7 +24,6 @@ import {
   FileSearch,
   Building2,
   UserCircle,
-  CreditCard,
   UserPlus,
   BookMarked,
   ShoppingCart,
@@ -35,7 +34,6 @@ import {
   Landmark,
   ArrowLeftRight,
   Package,
-  IndianRupee,
   ArrowDownCircle,
   ArrowUpCircle,
   // Smart features icons
@@ -46,7 +44,6 @@ import {
   Bell,
   Mic,
   Store,
-  Webhook,
 } from 'lucide-react';
 
 interface MenuItem {

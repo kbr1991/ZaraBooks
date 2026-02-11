@@ -3,6 +3,37 @@ import { db } from '../db';
 import { invoices, invoiceLines, fiscalYears, parties, journalEntries, journalEntryLines, chartOfAccounts } from '@shared/schema';
 import { eq, and, desc, asc, sql, gte, lte } from 'drizzle-orm';
 import { requireCompany, AuthenticatedRequest } from '../middleware/auth';
+import { z } from 'zod';
+
+const invoiceLineSchema = z.object({
+  accountId: z.string().min(1, 'Account is required'),
+  description: z.string().min(1, 'Description is required'),
+  hsnSacCode: z.string().optional(),
+  quantity: z.union([z.string(), z.number()]).transform(v => parseFloat(String(v))).pipe(z.number().positive('Quantity must be positive')),
+  unitPrice: z.union([z.string(), z.number()]).transform(v => parseFloat(String(v))).pipe(z.number().min(0, 'Unit price must be >= 0')),
+  discountPercent: z.union([z.string(), z.number()]).optional(),
+  discountAmount: z.union([z.string(), z.number()]).optional(),
+  taxRate: z.union([z.string(), z.number()]).optional(),
+});
+
+const createInvoiceSchema = z.object({
+  customerId: z.string().min(1, 'Customer is required'),
+  invoiceDate: z.string().min(1, 'Invoice date is required'),
+  dueDate: z.string().min(1, 'Due date is required'),
+  billingAddress: z.string().optional(),
+  shippingAddress: z.string().optional(),
+  notes: z.string().optional(),
+  terms: z.string().optional(),
+  lines: z.array(invoiceLineSchema).min(1, 'At least one line item is required'),
+});
+
+const recordPaymentSchema = z.object({
+  amount: z.union([z.string(), z.number()]).transform(v => parseFloat(String(v))).pipe(z.number().positive('Amount must be positive')),
+  paymentDate: z.string().optional(),
+  paymentMethod: z.string().optional(),
+  reference: z.string().optional(),
+  bankAccountId: z.string().optional(),
+});
 
 const router = Router();
 
@@ -82,6 +113,12 @@ router.get('/:id', requireCompany, async (req: AuthenticatedRequest, res) => {
 // Create invoice
 router.post('/', requireCompany, async (req: AuthenticatedRequest, res) => {
   try {
+    const parseResult = createInvoiceSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      const errors = parseResult.error.errors.map(e => e.message).join(', ');
+      return res.status(400).json({ error: errors });
+    }
+
     const {
       customerId,
       invoiceDate,
@@ -90,16 +127,8 @@ router.post('/', requireCompany, async (req: AuthenticatedRequest, res) => {
       shippingAddress,
       notes,
       terms,
-      lines = [],
-    } = req.body;
-
-    if (!customerId || !invoiceDate || !dueDate) {
-      return res.status(400).json({ error: 'Customer, invoice date, and due date are required' });
-    }
-
-    if (!lines.length) {
-      return res.status(400).json({ error: 'At least one line item is required' });
-    }
+      lines,
+    } = parseResult.data;
 
     // Get current fiscal year
     const fiscalYear = await db.query.fiscalYears.findFirst({
@@ -165,56 +194,56 @@ router.post('/', requireCompany, async (req: AuthenticatedRequest, res) => {
 
     const totalAmount = subtotal + totalTax;
 
-    // Create invoice
-    const [invoice] = await db.insert(invoices).values({
-      companyId: req.companyId!,
-      fiscalYearId: fiscalYear.id,
-      invoiceNumber,
-      invoiceDate,
-      dueDate,
-      customerId,
-      billingAddress,
-      shippingAddress,
-      subtotal: subtotal.toString(),
-      taxAmount: totalTax.toString(),
-      cgst: totalCgst.toString(),
-      sgst: totalSgst.toString(),
-      igst: totalIgst.toString(),
-      totalAmount: totalAmount.toString(),
-      balanceDue: totalAmount.toString(),
-      status: 'draft',
-      notes,
-      terms,
-      createdByUserId: req.userId,
-    }).returning();
+    // Create invoice and line items in a transaction
+    const completeInvoice = await db.transaction(async (tx) => {
+      const [invoice] = await tx.insert(invoices).values({
+        companyId: req.companyId!,
+        fiscalYearId: fiscalYear.id,
+        invoiceNumber,
+        invoiceDate,
+        dueDate,
+        customerId,
+        billingAddress,
+        shippingAddress,
+        subtotal: subtotal.toString(),
+        taxAmount: totalTax.toString(),
+        cgst: totalCgst.toString(),
+        sgst: totalSgst.toString(),
+        igst: totalIgst.toString(),
+        totalAmount: totalAmount.toString(),
+        balanceDue: totalAmount.toString(),
+        status: 'draft',
+        notes,
+        terms,
+        createdByUserId: req.userId,
+      }).returning();
 
-    // Create line items
-    if (processedLines.length > 0) {
-      await db.insert(invoiceLines).values(
-        processedLines.map((line: any) => ({
-          invoiceId: invoice.id,
-          accountId: line.accountId,
-          description: line.description,
-          hsnSacCode: line.hsnSacCode,
-          quantity: line.quantity,
-          unitPrice: line.unitPrice,
-          discountPercent: line.discountPercent?.toString(),
-          discountAmount: line.discountAmount,
-          taxRate: line.taxRate?.toString(),
-          taxAmount: line.taxAmount,
-          amount: line.amount,
-          sortOrder: line.sortOrder,
-        }))
-      );
-    }
+      if (processedLines.length > 0) {
+        await tx.insert(invoiceLines).values(
+          processedLines.map((line: any) => ({
+            invoiceId: invoice.id,
+            accountId: line.accountId,
+            description: line.description,
+            hsnSacCode: line.hsnSacCode,
+            quantity: line.quantity,
+            unitPrice: line.unitPrice,
+            discountPercent: line.discountPercent?.toString(),
+            discountAmount: line.discountAmount,
+            taxRate: line.taxRate?.toString(),
+            taxAmount: line.taxAmount,
+            amount: line.amount,
+            sortOrder: line.sortOrder,
+          }))
+        );
+      }
 
-    // Fetch complete invoice with relations
-    const completeInvoice = await db.query.invoices.findFirst({
-      where: eq(invoices.id, invoice.id),
-      with: {
-        customer: true,
-        lines: true,
-      },
+      return await tx.query.invoices.findFirst({
+        where: eq(invoices.id, invoice.id),
+        with: {
+          customer: true,
+          lines: true,
+        },
+      });
     });
 
     res.status(201).json(completeInvoice);
@@ -320,60 +349,62 @@ router.post('/:id/send', requireCompany, async (req: AuthenticatedRequest, res) 
       return res.status(400).json({ error: 'Accounts receivable account not found' });
     }
 
-    // Create journal entry
-    const [je] = await db.insert(journalEntries).values({
-      companyId: req.companyId!,
-      fiscalYearId: fiscalYear.id,
-      entryNumber,
-      entryDate: invoice.invoiceDate,
-      entryType: 'auto_invoice',
-      narration: `Invoice ${invoice.invoiceNumber} - ${invoice.customer.name}`,
-      totalDebit: invoice.totalAmount,
-      totalCredit: invoice.totalAmount,
-      sourceType: 'invoice',
-      sourceId: invoice.id,
-      status: 'posted',
-      createdByUserId: req.userId,
-    }).returning();
+    // Create journal entry and update invoice in a transaction
+    const updated = await db.transaction(async (tx) => {
+      const [je] = await tx.insert(journalEntries).values({
+        companyId: req.companyId!,
+        fiscalYearId: fiscalYear.id,
+        entryNumber,
+        entryDate: invoice.invoiceDate,
+        entryType: 'auto_invoice',
+        narration: `Invoice ${invoice.invoiceNumber} - ${invoice.customer.name}`,
+        totalDebit: invoice.totalAmount,
+        totalCredit: invoice.totalAmount,
+        sourceType: 'invoice',
+        sourceId: invoice.id,
+        status: 'posted',
+        createdByUserId: req.userId,
+      }).returning();
 
-    // Create journal entry lines
-    const jeLines = [];
+      const jeLines: any[] = [];
 
-    // Debit: Accounts Receivable
-    jeLines.push({
-      journalEntryId: je.id,
-      accountId: arAccount.id,
-      debitAmount: invoice.totalAmount,
-      creditAmount: '0',
-      partyType: 'customer' as const,
-      partyId: invoice.customerId,
-      description: `Invoice ${invoice.invoiceNumber}`,
-    });
-
-    // Credit: Revenue accounts for each line item
-    for (const line of invoice.lines) {
-      if (line.accountId) {
-        jeLines.push({
-          journalEntryId: je.id,
-          accountId: line.accountId,
-          debitAmount: '0',
-          creditAmount: line.amount,
-          description: line.description,
-        });
-      }
-    }
-
-    await db.insert(journalEntryLines).values(jeLines);
-
-    // Update invoice status and link to journal entry
-    const [updated] = await db.update(invoices)
-      .set({
-        status: 'sent',
+      // Debit: Accounts Receivable
+      jeLines.push({
         journalEntryId: je.id,
-        updatedAt: new Date(),
-      })
-      .where(eq(invoices.id, id))
-      .returning();
+        accountId: arAccount.id,
+        debitAmount: invoice.totalAmount,
+        creditAmount: '0',
+        partyType: 'customer' as const,
+        partyId: invoice.customerId,
+        description: `Invoice ${invoice.invoiceNumber}`,
+      });
+
+      // Credit: Revenue accounts for each line item
+      for (const line of invoice.lines) {
+        if (line.accountId) {
+          jeLines.push({
+            journalEntryId: je.id,
+            accountId: line.accountId,
+            debitAmount: '0',
+            creditAmount: line.amount,
+            description: line.description,
+          });
+        }
+      }
+
+      await tx.insert(journalEntryLines).values(jeLines);
+
+      const [inv] = await tx.update(invoices)
+        .set({
+          status: 'sent',
+          journalEntryId: je.id,
+          updatedAt: new Date(),
+        })
+        .where(eq(invoices.id, id))
+        .returning();
+
+      return inv;
+    });
 
     res.json(updated);
   } catch (error) {
@@ -386,7 +417,12 @@ router.post('/:id/send', requireCompany, async (req: AuthenticatedRequest, res) 
 router.post('/:id/payment', requireCompany, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
-    const { amount, paymentDate, paymentMethod, reference, bankAccountId } = req.body;
+    const paymentParse = recordPaymentSchema.safeParse(req.body);
+    if (!paymentParse.success) {
+      const errors = paymentParse.error.errors.map(e => e.message).join(', ');
+      return res.status(400).json({ error: errors });
+    }
+    const { amount, paymentDate, paymentMethod, reference, bankAccountId } = paymentParse.data;
 
     const invoice = await db.query.invoices.findFirst({
       where: and(
@@ -406,7 +442,7 @@ router.post('/:id/payment', requireCompany, async (req: AuthenticatedRequest, re
       return res.status(400).json({ error: 'Cannot record payment for this invoice' });
     }
 
-    const paymentAmount = parseFloat(amount);
+    const paymentAmount = typeof amount === 'number' ? amount : parseFloat(amount);
     const currentPaid = parseFloat(invoice.paidAmount || '0');
     const totalAmount = parseFloat(invoice.totalAmount);
     const newPaidAmount = currentPaid + paymentAmount;
@@ -418,79 +454,83 @@ router.post('/:id/payment', requireCompany, async (req: AuthenticatedRequest, re
 
     const newStatus = newBalanceDue === 0 ? 'paid' : 'partially_paid';
 
-    // Update invoice
-    const [updated] = await db.update(invoices)
-      .set({
-        paidAmount: newPaidAmount.toString(),
-        balanceDue: newBalanceDue.toString(),
-        status: newStatus,
-        updatedAt: new Date(),
-      })
-      .where(eq(invoices.id, id))
-      .returning();
+    // Update invoice and create journal entry in a transaction
+    const updated = await db.transaction(async (tx) => {
+      const [inv] = await tx.update(invoices)
+        .set({
+          paidAmount: newPaidAmount.toString(),
+          balanceDue: newBalanceDue.toString(),
+          status: newStatus,
+          updatedAt: new Date(),
+        })
+        .where(eq(invoices.id, id))
+        .returning();
 
-    // Create journal entry for payment (if bank account provided)
-    if (bankAccountId) {
-      const fiscalYear = await db.query.fiscalYears.findFirst({
-        where: and(
-          eq(fiscalYears.companyId, req.companyId!),
-          eq(fiscalYears.isCurrent, true)
-        ),
-      });
-
-      if (fiscalYear) {
-        const lastEntry = await db.query.journalEntries.findFirst({
-          where: eq(journalEntries.companyId, req.companyId!),
-          orderBy: desc(journalEntries.createdAt),
-        });
-
-        const nextNum = lastEntry
-          ? parseInt(lastEntry.entryNumber.split('/').pop() || '0', 10) + 1
-          : 1;
-        const entryNumber = `RCV/${fiscalYear.name.replace(/\s/g, '')}/${nextNum.toString().padStart(5, '0')}`;
-
-        const arAccount = await db.query.chartOfAccounts.findFirst({
+      // Create journal entry for payment (if bank account provided)
+      if (bankAccountId) {
+        const fiscalYear = await tx.query.fiscalYears.findFirst({
           where: and(
-            eq(chartOfAccounts.companyId, req.companyId!),
-            eq(chartOfAccounts.code, '1300')
+            eq(fiscalYears.companyId, req.companyId!),
+            eq(fiscalYears.isCurrent, true)
           ),
         });
 
-        if (arAccount) {
-          const [je] = await db.insert(journalEntries).values({
-            companyId: req.companyId!,
-            fiscalYearId: fiscalYear.id,
-            entryNumber,
-            entryDate: paymentDate || new Date().toISOString().split('T')[0],
-            entryType: 'auto_payment',
-            narration: `Payment received for Invoice ${invoice.invoiceNumber} - ${invoice.customer.name}`,
-            totalDebit: paymentAmount.toString(),
-            totalCredit: paymentAmount.toString(),
-            status: 'posted',
-            createdByUserId: req.userId,
-          }).returning();
+        if (fiscalYear) {
+          const lastEntry = await tx.query.journalEntries.findFirst({
+            where: eq(journalEntries.companyId, req.companyId!),
+            orderBy: desc(journalEntries.createdAt),
+          });
 
-          await db.insert(journalEntryLines).values([
-            {
-              journalEntryId: je.id,
-              accountId: bankAccountId,
-              debitAmount: paymentAmount.toString(),
-              creditAmount: '0',
-              description: `Payment - ${reference || invoice.invoiceNumber}`,
-            },
-            {
-              journalEntryId: je.id,
-              accountId: arAccount.id,
-              debitAmount: '0',
-              creditAmount: paymentAmount.toString(),
-              partyType: 'customer' as const,
-              partyId: invoice.customerId,
-              description: `Payment - ${invoice.invoiceNumber}`,
-            },
-          ]);
+          const nextNum = lastEntry
+            ? parseInt(lastEntry.entryNumber.split('/').pop() || '0', 10) + 1
+            : 1;
+          const entryNumber = `RCV/${fiscalYear.name.replace(/\s/g, '')}/${nextNum.toString().padStart(5, '0')}`;
+
+          const arAccount = await tx.query.chartOfAccounts.findFirst({
+            where: and(
+              eq(chartOfAccounts.companyId, req.companyId!),
+              eq(chartOfAccounts.code, '1300')
+            ),
+          });
+
+          if (arAccount) {
+            const [je] = await tx.insert(journalEntries).values({
+              companyId: req.companyId!,
+              fiscalYearId: fiscalYear.id,
+              entryNumber,
+              entryDate: paymentDate || new Date().toISOString().split('T')[0],
+              entryType: 'auto_payment',
+              narration: `Payment received for Invoice ${invoice.invoiceNumber} - ${invoice.customer.name}`,
+              totalDebit: paymentAmount.toString(),
+              totalCredit: paymentAmount.toString(),
+              status: 'posted',
+              createdByUserId: req.userId,
+            }).returning();
+
+            await tx.insert(journalEntryLines).values([
+              {
+                journalEntryId: je.id,
+                accountId: bankAccountId,
+                debitAmount: paymentAmount.toString(),
+                creditAmount: '0',
+                description: `Payment - ${reference || invoice.invoiceNumber}`,
+              },
+              {
+                journalEntryId: je.id,
+                accountId: arAccount.id,
+                debitAmount: '0',
+                creditAmount: paymentAmount.toString(),
+                partyType: 'customer' as const,
+                partyId: invoice.customerId,
+                description: `Payment - ${invoice.invoiceNumber}`,
+              },
+            ]);
+          }
         }
       }
-    }
+
+      return inv;
+    });
 
     res.json(updated);
   } catch (error) {
@@ -563,8 +603,10 @@ router.delete('/:id', requireCompany, async (req: AuthenticatedRequest, res) => 
       return res.status(400).json({ error: 'Only draft invoices can be deleted' });
     }
 
-    await db.delete(invoiceLines).where(eq(invoiceLines.invoiceId, id));
-    await db.delete(invoices).where(eq(invoices.id, id));
+    await db.transaction(async (tx) => {
+      await tx.delete(invoiceLines).where(eq(invoiceLines.invoiceId, id));
+      await tx.delete(invoices).where(eq(invoices.id, id));
+    });
 
     res.json({ message: 'Invoice deleted' });
   } catch (error) {

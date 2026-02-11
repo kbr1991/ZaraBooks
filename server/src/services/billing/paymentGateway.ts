@@ -21,6 +21,7 @@ import {
 } from '../../../../shared/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import crypto from 'crypto';
+import { decryptJSON } from '../../utils/crypto';
 
 interface PaymentLinkOptions {
   amount: number;
@@ -75,11 +76,20 @@ export async function createPaymentLink(
   let shortUrl: string | undefined;
   let gatewayOrderId: string | undefined;
 
+  // Decrypt credentials
+  let decryptedCredentials: RazorpayCredentials;
+  try {
+    decryptedCredentials = decryptJSON<RazorpayCredentials>(config.credentials!);
+  } catch {
+    // Fallback: try parsing as plain JSON (for pre-encryption data)
+    decryptedCredentials = JSON.parse(config.credentials!) as RazorpayCredentials;
+  }
+
   // Create link based on gateway type
   switch (config.gateway) {
     case 'razorpay':
       const razorpayResult = await createRazorpayPaymentLink(
-        config.credentials as unknown as RazorpayCredentials,
+        decryptedCredentials,
         options,
         config.isTestMode || false
       );

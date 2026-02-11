@@ -570,7 +570,7 @@ export default function SalesOrders() {
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                        {order.status === 'draft' && (
+                        {order.status === 'open' && (
                           <Button
                             variant="ghost"
                             size="icon"

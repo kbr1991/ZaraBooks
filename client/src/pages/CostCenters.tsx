@@ -34,7 +34,6 @@ import {
   Target,
   Plus,
   Search,
-  Eye,
   Edit,
   Trash2,
   ChevronRight,

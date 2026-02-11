@@ -40,7 +40,6 @@ import {
   Trash2,
   CheckCircle,
   Clock,
-  Package,
   FileOutput,
 } from 'lucide-react';
 
@@ -248,7 +247,7 @@ export default function PurchaseOrders() {
     total: purchaseOrders?.length || 0,
     draft: purchaseOrders?.filter((po) => po.status === 'draft').length || 0,
     issued: purchaseOrders?.filter((po) => po.status === 'issued').length || 0,
-    closed: purchaseOrders?.filter((po) => po.status === 'closed').length || 0,
+    closed: purchaseOrders?.filter((po) => po.status === 'received').length || 0,
     totalAmount: purchaseOrders?.reduce((sum, po) => sum + parseFloat(po.totalAmount || '0'), 0) || 0,
     issuedAmount: purchaseOrders?.filter((po) => po.status === 'issued')
       .reduce((sum, po) => sum + parseFloat(po.totalAmount || '0'), 0) || 0,
@@ -483,7 +482,7 @@ export default function PurchaseOrders() {
                 <Input
                   type="date"
                   value={formData.orderDate}
-                  onChange={(e) => setFormData({ ...formData, poDate: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, orderDate: e.target.value })}
                 />
               </div>
             </div>
