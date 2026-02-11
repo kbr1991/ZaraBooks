@@ -97,7 +97,7 @@ export async function processVoiceInput(
 /**
  * Transcribes audio to text
  */
-async function transcribeAudio(audioUrl: string): Promise<string> {
+export async function transcribeAudio(audioUrl: string): Promise<string> {
   // In production, use Google Speech-to-Text API:
   // const speech = require('@google-cloud/speech');
   // const client = new speech.SpeechClient();
@@ -504,4 +504,39 @@ async function getBalanceSummary(companyId: string): Promise<{ entryType: string
     entryId: '',
     message: `Your current bank balance is Rs. ${totalBalance.toLocaleString('en-IN')}`
   };
+}
+
+/**
+ * Gets transcription history for a company
+ */
+export async function getTranscriptionHistory(
+  companyId: string,
+  options?: {
+    userId?: string;
+    limit?: number;
+    offset?: number;
+  }
+): Promise<VoiceTranscription[]> {
+  const { userId, limit = 50, offset = 0 } = options || {};
+
+  let query = db.select()
+    .from(voiceTranscriptions)
+    .where(eq(voiceTranscriptions.companyId, companyId))
+    .orderBy(voiceTranscriptions.createdAt)
+    .limit(limit)
+    .offset(offset);
+
+  if (userId) {
+    query = db.select()
+      .from(voiceTranscriptions)
+      .where(and(
+        eq(voiceTranscriptions.companyId, companyId),
+        eq(voiceTranscriptions.userId, userId)
+      ))
+      .orderBy(voiceTranscriptions.createdAt)
+      .limit(limit)
+      .offset(offset);
+  }
+
+  return await query;
 }
