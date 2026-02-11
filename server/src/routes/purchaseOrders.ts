@@ -225,8 +225,8 @@ router.patch('/:id', requireCompany, async (req: AuthenticatedRequest, res) => {
       return res.status(404).json({ error: 'Purchase order not found' });
     }
 
-    if (order.status !== 'draft') {
-      return res.status(400).json({ error: 'Only draft orders can be edited' });
+    if (!['draft', 'issued'].includes(order.status)) {
+      return res.status(400).json({ error: 'Only draft or issued orders can be edited' });
     }
 
     const [updated] = await db.update(purchaseOrders)
@@ -425,6 +425,45 @@ router.post('/:id/convert-to-bill', requireCompany, async (req: AuthenticatedReq
   }
 });
 
+// Cancel purchase order
+router.post('/:id/cancel', requireCompany, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+
+    const order = await db.query.purchaseOrders.findFirst({
+      where: and(
+        eq(purchaseOrders.id, id),
+        eq(purchaseOrders.companyId, req.companyId!)
+      ),
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: 'Purchase order not found' });
+    }
+
+    if (!['issued', 'acknowledged'].includes(order.status)) {
+      return res.status(400).json({ error: 'Only issued or acknowledged orders can be cancelled' });
+    }
+
+    if (order.convertedToBillId) {
+      return res.status(400).json({ error: 'Cannot cancel order that has been converted to bill' });
+    }
+
+    const [updated] = await db.update(purchaseOrders)
+      .set({
+        status: 'cancelled',
+        updatedAt: new Date(),
+      })
+      .where(eq(purchaseOrders.id, id))
+      .returning();
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Cancel purchase order error:', error);
+    res.status(500).json({ error: 'Failed to cancel purchase order' });
+  }
+});
+
 // Delete purchase order (only drafts)
 router.delete('/:id', requireCompany, async (req: AuthenticatedRequest, res) => {
   try {
@@ -441,8 +480,11 @@ router.delete('/:id', requireCompany, async (req: AuthenticatedRequest, res) => 
       return res.status(404).json({ error: 'Purchase order not found' });
     }
 
-    if (order.status !== 'draft') {
-      return res.status(400).json({ error: 'Only draft orders can be deleted' });
+    if (!['draft', 'issued'].includes(order.status)) {
+      return res.status(400).json({ error: 'Only draft or issued orders can be deleted' });
+    }
+    if (order.convertedToBillId) {
+      return res.status(400).json({ error: 'Cannot delete order that has been converted to bill' });
     }
 
     await db.delete(purchaseOrderLines).where(eq(purchaseOrderLines.purchaseOrderId, id));

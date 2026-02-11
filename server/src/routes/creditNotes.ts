@@ -407,6 +407,59 @@ router.post('/:id/apply', requireCompany, async (req: AuthenticatedRequest, res)
   }
 });
 
+// Cancel credit note
+router.post('/:id/cancel', requireCompany, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+
+    const note = await db.query.creditNotes.findFirst({
+      where: and(
+        eq(creditNotes.id, id),
+        eq(creditNotes.companyId, req.companyId!)
+      ),
+    });
+
+    if (!note) {
+      return res.status(404).json({ error: 'Credit note not found' });
+    }
+
+    if (note.status !== 'issued') {
+      return res.status(400).json({ error: 'Only issued credit notes can be cancelled' });
+    }
+
+    if (parseFloat(note.appliedAmount || '0') > 0) {
+      return res.status(400).json({ error: 'Cannot cancel credit note that has been applied' });
+    }
+
+    // Reverse journal entries
+    const relatedJournals = await db.query.journalEntries.findMany({
+      where: and(
+        eq(journalEntries.companyId, req.companyId!),
+        eq(journalEntries.referenceType, 'credit_note'),
+        eq(journalEntries.referenceId, id)
+      ),
+    });
+
+    for (const je of relatedJournals) {
+      await db.delete(journalEntryLines).where(eq(journalEntryLines.journalEntryId, je.id));
+      await db.delete(journalEntries).where(eq(journalEntries.id, je.id));
+    }
+
+    const [updated] = await db.update(creditNotes)
+      .set({
+        status: 'cancelled',
+        updatedAt: new Date(),
+      })
+      .where(eq(creditNotes.id, id))
+      .returning();
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Cancel credit note error:', error);
+    res.status(500).json({ error: 'Failed to cancel credit note' });
+  }
+});
+
 // Delete credit note (only drafts)
 router.delete('/:id', requireCompany, async (req: AuthenticatedRequest, res) => {
   try {

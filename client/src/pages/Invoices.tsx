@@ -46,6 +46,7 @@ import {
   X,
   Printer,
   FileDown,
+  XCircle,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -436,6 +437,27 @@ export default function Invoices() {
     },
   });
 
+  const cancelInvoiceMutation = useMutation({
+    mutationFn: async (invoiceId: string) => {
+      const response = await fetch(`/api/invoices/${invoiceId}/cancel`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to cancel invoice');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      toast({ title: 'Invoice cancelled successfully' });
+    },
+    onError: (error: Error) => {
+      toast({ title: error.message, variant: 'destructive' });
+    },
+  });
+
   // Delete invoice mutation
   const deleteInvoiceMutation = useMutation({
     mutationFn: async (invoiceId: string) => {
@@ -687,6 +709,20 @@ export default function Invoices() {
                             onClick={() => markPaidMutation.mutate(invoice.id)}
                           >
                             <CheckCircle className="h-4 w-4 text-green-500" />
+                          </Button>
+                        )}
+                        {invoice.status === 'sent' && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              if (confirm('Are you sure you want to cancel this invoice? This will reverse journal entries.')) {
+                                cancelInvoiceMutation.mutate(invoice.id);
+                              }
+                            }}
+                            title="Cancel Invoice"
+                          >
+                            <XCircle className="h-4 w-4 text-orange-500" />
                           </Button>
                         )}
                         <DropdownMenu>

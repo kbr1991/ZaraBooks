@@ -17,7 +17,7 @@ interface TemplateSelectorProps {
   onOpenChange: (open: boolean) => void;
   defaultTemplate: TemplateId;
   onSelect: (templateId: TemplateId, action: 'print' | 'pdf') => void;
-  documentType: 'invoice' | 'quote' | 'sales_order';
+  documentType: 'invoice' | 'quote' | 'sales_order' | 'purchase_order' | 'bill' | 'credit_note' | 'debit_note';
 }
 
 export default function TemplateSelector({
@@ -34,11 +34,15 @@ export default function TemplateSelector({
     onOpenChange(false);
   };
 
-  const documentName = {
+  const documentName: Record<string, string> = {
     invoice: 'Invoice',
     quote: 'Quote',
     sales_order: 'Sales Order',
-  }[documentType];
+    purchase_order: 'Purchase Order',
+    bill: 'Bill',
+    credit_note: 'Credit Note',
+    debit_note: 'Debit Note',
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -46,7 +50,7 @@ export default function TemplateSelector({
         <DialogHeader>
           <DialogTitle>Choose Template</DialogTitle>
           <DialogDescription>
-            Select a template style for your {documentName.toLowerCase()}
+            Select a template style for your {(documentName[documentType] || 'document').toLowerCase()}
           </DialogDescription>
         </DialogHeader>
 

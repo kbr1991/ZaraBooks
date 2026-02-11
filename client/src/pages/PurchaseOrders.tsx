@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -41,7 +41,20 @@ import {
   CheckCircle,
   Clock,
   FileOutput,
+  Download,
+  Printer,
+  FileDown,
+  XCircle,
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { generateDocument, DocumentData, TemplateId } from '@/lib/document-templates';
+import TemplateSelector from '@/components/document/TemplateSelector';
+import { useAuth } from '@/hooks/useAuth';
 
 interface PurchaseOrder {
   id: string;
@@ -54,6 +67,7 @@ interface PurchaseOrder {
   taxAmount: string;
   totalAmount: string;
   status: 'draft' | 'issued' | 'acknowledged' | 'received' | 'cancelled';
+  convertedToBillId?: string;
   items: PurchaseOrderItem[];
 }
 
@@ -82,12 +96,16 @@ export default function PurchaseOrders() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
+  const [editingPO, setEditingPO] = useState<PurchaseOrder | null>(null);
   const [formData, setFormData] = useState({
     vendorId: '',
     orderDate: new Date().toISOString().split('T')[0],
     expectedDate: '',
     items: [{ description: '', quantity: 1, rate: '', hsnSac: '', gstRate: '18' }],
   });
+  const { currentCompany } = useAuth();
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+  const [pendingDownloadId, setPendingDownloadId] = useState<string | null>(null);
 
   // Fetch purchase orders
   const { data: purchaseOrders, isLoading } = useQuery<PurchaseOrder[]>({
@@ -135,6 +153,30 @@ export default function PurchaseOrders() {
     },
     onError: () => {
       toast({ title: 'Failed to create purchase order', variant: 'destructive' });
+    },
+  });
+
+  // Update PO mutation
+  const updatePOMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      const response = await fetch(`/api/purchase-orders/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) throw new Error('Failed to update purchase order');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      setShowCreateDialog(false);
+      setEditingPO(null);
+      resetForm();
+      toast({ title: 'Purchase order updated successfully' });
+    },
+    onError: () => {
+      toast({ title: 'Failed to update purchase order', variant: 'destructive' });
     },
   });
 
@@ -196,6 +238,28 @@ export default function PurchaseOrders() {
     },
   });
 
+  // Cancel PO mutation
+  const cancelPOMutation = useMutation({
+    mutationFn: async (poId: string) => {
+      const response = await fetch(`/api/purchase-orders/${poId}/cancel`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to cancel purchase order');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      toast({ title: 'Purchase order cancelled' });
+    },
+    onError: (error: Error) => {
+      toast({ title: error.message, variant: 'destructive' });
+    },
+  });
+
   const resetForm = () => {
     setFormData({
       vendorId: '',
@@ -203,6 +267,115 @@ export default function PurchaseOrders() {
       expectedDate: '',
       items: [{ description: '', quantity: 1, rate: '', hsnSac: '', gstRate: '18' }],
     });
+  };
+
+  const handleEditPO = async (po: PurchaseOrder) => {
+    const response = await fetch(`/api/purchase-orders/${po.id}`, { credentials: 'include' });
+    if (response.ok) {
+      const fullPO = await response.json();
+      setEditingPO(fullPO);
+      setFormData({
+        vendorId: fullPO.vendorId,
+        orderDate: fullPO.orderDate,
+        expectedDate: fullPO.expectedDate || '',
+        items: fullPO.lines && fullPO.lines.length > 0
+          ? fullPO.lines.map((line: any) => ({
+              description: line.description || '',
+              quantity: parseFloat(line.quantity) || 1,
+              rate: line.unitPrice || '',
+              hsnSac: line.hsnSacCode || '',
+              gstRate: line.taxRate || '18',
+            }))
+          : [{ description: '', quantity: 1, rate: '', hsnSac: '', gstRate: '18' }],
+      });
+      setShowCreateDialog(true);
+    }
+  };
+
+  useEffect(() => {
+    if (!showCreateDialog) {
+      resetForm();
+      setEditingPO(null);
+    }
+  }, [showCreateDialog]);
+
+  const handleOpenTemplateSelector = (id: string) => {
+    setPendingDownloadId(id);
+    setShowTemplateSelector(true);
+  };
+
+  const handleDownloadPDF = async (templateId: TemplateId, _action: 'print' | 'pdf') => {
+    if (!pendingDownloadId) return;
+    try {
+      const response = await fetch(`/api/purchase-orders/${pendingDownloadId}`, { credentials: 'include' });
+      if (!response.ok) { toast({ title: 'Failed to load purchase order', variant: 'destructive' }); return; }
+      const po = await response.json();
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) { toast({ title: 'Please allow popups to download PDF', variant: 'destructive' }); return; }
+      const lines = po.lines || [];
+      const subtotal = parseFloat(po.subtotal || 0);
+      const cgst = parseFloat(po.cgst || 0);
+      const sgst = parseFloat(po.sgst || 0);
+      const igst = parseFloat(po.igst || 0);
+      const total = parseFloat(po.totalAmount || 0);
+      const documentData: DocumentData = {
+        type: 'purchase_order',
+        documentNumber: po.orderNumber,
+        documentDate: po.orderDate,
+        deliveryDate: po.expectedDate,
+        company: {
+          name: currentCompany?.name || '',
+          legalName: currentCompany?.legalName,
+          logoUrl: currentCompany?.logoUrl,
+          address: currentCompany?.address,
+          city: currentCompany?.city,
+          state: currentCompany?.state,
+          pincode: currentCompany?.pincode,
+          gstin: currentCompany?.gstin,
+          pan: currentCompany?.pan,
+        },
+        customer: {
+          name: po.vendor?.name || 'Vendor',
+          address: po.vendor?.address,
+          city: po.vendor?.city,
+          state: po.vendor?.state,
+          pincode: po.vendor?.pincode,
+          gstin: po.vendor?.gstin,
+          email: po.vendor?.email,
+        },
+        items: lines.map((line: any) => {
+          const qty = parseFloat(line.quantity) || 1;
+          const rate = parseFloat(line.unitPrice) || 0;
+          return {
+            description: line.description || '',
+            hsnSac: line.hsnSacCode || '',
+            quantity: qty,
+            rate: rate,
+            amount: qty * rate,
+            taxRate: parseFloat(line.taxRate) || 0,
+            taxAmount: parseFloat(line.taxAmount) || 0,
+          };
+        }),
+        subtotal,
+        taxBreakdown: { cgst, sgst, igst },
+        totalAmount: total,
+        notes: po.notes,
+        status: po.status,
+      };
+      const htmlContent = generateDocument(documentData, templateId);
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+      printWindow.onload = () => { setTimeout(() => { printWindow.print(); }, 250); };
+      setPendingDownloadId(null);
+    } catch (error) {
+      toast({ title: 'Failed to generate PDF', variant: 'destructive' });
+    }
+  };
+
+  const handleQuickDownload = async (id: string, action: 'print' | 'pdf') => {
+    setPendingDownloadId(id);
+    const defaultTemplate = (currentCompany?.defaultTemplate as TemplateId) || 'classic';
+    await handleDownloadPDF(defaultTemplate, action);
   };
 
   const addLineItem = () => {
@@ -402,17 +575,39 @@ export default function PurchaseOrders() {
                         >
                           <Eye className="h-4 w-4" />
                         </Button>
-                        {po.status === 'draft' && (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => issuePOMutation.mutate(po.id)}
-                              title="Issue to Vendor"
-                            >
-                              <Send className="h-4 w-4" />
-                            </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon">
+                              <Download className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent>
+                            <DropdownMenuItem onClick={() => handleQuickDownload(po.id, 'pdf')}>
+                              <FileDown className="h-4 w-4 mr-2" />
+                              Quick Download
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleQuickDownload(po.id, 'print')}>
+                              <Printer className="h-4 w-4 mr-2" />
+                              Print
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleOpenTemplateSelector(po.id)}>
+                              Choose Template...
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        {['draft', 'issued'].includes(po.status) && (
+                          <>
+                            {po.status === 'draft' && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => issuePOMutation.mutate(po.id)}
+                                title="Issue to Vendor"
+                              >
+                                <Send className="h-4 w-4" />
+                              </Button>
+                            )}
+                            <Button variant="ghost" size="icon" onClick={() => handleEditPO(po)}>
                               <Edit className="h-4 w-4" />
                             </Button>
                             <Button
@@ -438,6 +633,20 @@ export default function PurchaseOrders() {
                             <FileOutput className="h-4 w-4 text-green-500" />
                           </Button>
                         )}
+                        {['issued', 'acknowledged'].includes(po.status) && !po.convertedToBillId && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              if (confirm('Are you sure you want to cancel this purchase order?')) {
+                                cancelPOMutation.mutate(po.id);
+                              }
+                            }}
+                            title="Cancel Order"
+                          >
+                            <XCircle className="h-4 w-4 text-orange-500" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -452,7 +661,7 @@ export default function PurchaseOrders() {
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Create Purchase Order</DialogTitle>
+            <DialogTitle>{editingPO ? 'Edit Purchase Order' : 'Create Purchase Order'}</DialogTitle>
             <DialogDescription>
               Create a new purchase order for your vendor
             </DialogDescription>
@@ -601,20 +810,31 @@ export default function PurchaseOrders() {
             <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
               Cancel
             </Button>
-            <Button
-              variant="outline"
-              disabled={createPOMutation.isPending}
-              onClick={() => createPOMutation.mutate(formData)}
-            >
-              Save as Draft
-            </Button>
-            <Button
-              disabled={createPOMutation.isPending || !formData.vendorId}
-              onClick={() => createPOMutation.mutate(formData)}
-            >
-              <Send className="h-4 w-4 mr-2" />
-              Save & Issue
-            </Button>
+            {editingPO ? (
+              <Button
+                disabled={updatePOMutation.isPending || !formData.vendorId}
+                onClick={() => updatePOMutation.mutate({ id: editingPO.id, data: formData })}
+              >
+                {updatePOMutation.isPending ? 'Updating...' : 'Update Purchase Order'}
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  disabled={createPOMutation.isPending}
+                  onClick={() => createPOMutation.mutate(formData)}
+                >
+                  Save as Draft
+                </Button>
+                <Button
+                  disabled={createPOMutation.isPending || !formData.vendorId}
+                  onClick={() => createPOMutation.mutate(formData)}
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  Save & Issue
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -669,6 +889,14 @@ export default function PurchaseOrders() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TemplateSelector
+        open={showTemplateSelector}
+        onOpenChange={setShowTemplateSelector}
+        defaultTemplate={(currentCompany?.defaultTemplate as TemplateId) || 'classic'}
+        onSelect={handleDownloadPDF}
+        documentType="purchase_order"
+      />
     </div>
   );
 }

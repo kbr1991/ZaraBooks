@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -52,6 +52,7 @@ import {
   Printer,
   FileDown,
   FileText,
+  XCircle,
 } from 'lucide-react';
 import { generateDocument, DocumentData, TemplateId } from '@/lib/document-templates';
 import TemplateSelector from '@/components/document/TemplateSelector';
@@ -67,6 +68,7 @@ interface SalesOrder {
   taxAmount: string;
   totalAmount: string;
   status: 'open' | 'confirmed' | 'closed';
+  convertedToInvoiceId?: string;
   items: SalesOrderItem[];
 }
 
@@ -96,6 +98,7 @@ export default function SalesOrders() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<SalesOrder | null>(null);
+  const [editingSO, setEditingSO] = useState<SalesOrder | null>(null);
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [pendingDownloadOrderId, setPendingDownloadOrderId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
@@ -154,6 +157,30 @@ export default function SalesOrders() {
     },
   });
 
+  // Update SO mutation
+  const updateSOMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      const response = await fetch(`/api/sales-orders/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) throw new Error('Failed to update sales order');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sales-orders'] });
+      setShowCreateDialog(false);
+      setEditingSO(null);
+      resetForm();
+      toast({ title: 'Sales order updated successfully' });
+    },
+    onError: () => {
+      toast({ title: 'Failed to update sales order', variant: 'destructive' });
+    },
+  });
+
   // Confirm order mutation
   const confirmOrderMutation = useMutation({
     mutationFn: async (orderId: string) => {
@@ -190,6 +217,27 @@ export default function SalesOrders() {
     },
     onError: () => {
       toast({ title: 'Failed to convert order', variant: 'destructive' });
+    },
+  });
+
+  const cancelSOMutation = useMutation({
+    mutationFn: async (orderId: string) => {
+      const response = await fetch(`/api/sales-orders/${orderId}/cancel`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to cancel sales order');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sales-orders'] });
+      toast({ title: 'Sales order cancelled' });
+    },
+    onError: (error: Error) => {
+      toast({ title: error.message, variant: 'destructive' });
     },
   });
 
@@ -327,6 +375,36 @@ export default function SalesOrders() {
       items: [{ description: '', quantity: 1, rate: '', hsnSac: '', gstRate: '18' }],
     });
   };
+
+  const handleEditSO = async (order: SalesOrder) => {
+    const response = await fetch(`/api/sales-orders/${order.id}`, { credentials: 'include' });
+    if (response.ok) {
+      const fullSO = await response.json();
+      setEditingSO(fullSO);
+      setFormData({
+        customerId: fullSO.customerId,
+        orderDate: fullSO.orderDate,
+        deliveryDate: fullSO.deliveryDate || fullSO.expectedDeliveryDate || '',
+        items: fullSO.lines && fullSO.lines.length > 0
+          ? fullSO.lines.map((line: any) => ({
+              description: line.description || '',
+              quantity: parseFloat(line.quantity) || 1,
+              rate: line.unitPrice || '',
+              hsnSac: line.hsnSacCode || '',
+              gstRate: line.taxRate || '18',
+            }))
+          : [{ description: '', quantity: 1, rate: '', hsnSac: '', gstRate: '18' }],
+      });
+      setShowCreateDialog(true);
+    }
+  };
+
+  useEffect(() => {
+    if (!showCreateDialog) {
+      resetForm();
+      setEditingSO(null);
+    }
+  }, [showCreateDialog]);
 
   const addLineItem = () => {
     setFormData({
@@ -526,18 +604,13 @@ export default function SalesOrders() {
                           <Eye className="h-4 w-4" />
                         </Button>
                         {order.status === 'open' && (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => confirmOrderMutation.mutate(order.id)}
-                            >
-                              <CheckCircle className="h-4 w-4 text-green-500" />
-                            </Button>
-                            <Button variant="ghost" size="icon">
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                          </>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => confirmOrderMutation.mutate(order.id)}
+                          >
+                            <CheckCircle className="h-4 w-4 text-green-500" />
+                          </Button>
                         )}
                         {order.status === 'confirmed' && (
                           <Button
@@ -547,6 +620,39 @@ export default function SalesOrders() {
                             title="Convert to Invoice"
                           >
                             <FileOutput className="h-4 w-4 text-blue-500" />
+                          </Button>
+                        )}
+                        {['open', 'confirmed'].includes(order.status) && (
+                          <>
+                            <Button variant="ghost" size="icon" onClick={() => handleEditSO(order)}>
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                if (confirm('Are you sure you want to delete this sales order?')) {
+                                  deleteOrderMutation.mutate(order.id);
+                                }
+                              }}
+                              disabled={deleteOrderMutation.isPending}
+                            >
+                              <Trash2 className="h-4 w-4 text-red-500" />
+                            </Button>
+                          </>
+                        )}
+                        {['confirmed', 'processing'].includes(order.status) && !order.convertedToInvoiceId && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              if (confirm('Are you sure you want to cancel this sales order?')) {
+                                cancelSOMutation.mutate(order.id);
+                              }
+                            }}
+                            title="Cancel Order"
+                          >
+                            <XCircle className="h-4 w-4 text-orange-500" />
                           </Button>
                         )}
                         <DropdownMenu>
@@ -570,20 +676,6 @@ export default function SalesOrders() {
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                        {order.status === 'open' && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => {
-                              if (confirm('Are you sure you want to delete this sales order?')) {
-                                deleteOrderMutation.mutate(order.id);
-                              }
-                            }}
-                            disabled={deleteOrderMutation.isPending}
-                          >
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
-                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -598,7 +690,7 @@ export default function SalesOrders() {
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Create Sales Order</DialogTitle>
+            <DialogTitle>{editingSO ? 'Edit Sales Order' : 'Create Sales Order'}</DialogTitle>
             <DialogDescription>
               Create a new sales order for your customer
             </DialogDescription>
@@ -747,12 +839,21 @@ export default function SalesOrders() {
             <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
               Cancel
             </Button>
-            <Button
-              onClick={() => createOrderMutation.mutate(formData)}
-              disabled={createOrderMutation.isPending || !formData.customerId}
-            >
-              {createOrderMutation.isPending ? 'Creating...' : 'Create Order'}
-            </Button>
+            {editingSO ? (
+              <Button
+                disabled={updateSOMutation.isPending || !formData.customerId}
+                onClick={() => updateSOMutation.mutate({ id: editingSO.id, data: formData })}
+              >
+                {updateSOMutation.isPending ? 'Updating...' : 'Update Sales Order'}
+              </Button>
+            ) : (
+              <Button
+                onClick={() => createOrderMutation.mutate(formData)}
+                disabled={createOrderMutation.isPending || !formData.customerId}
+              >
+                {createOrderMutation.isPending ? 'Creating...' : 'Create Order'}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

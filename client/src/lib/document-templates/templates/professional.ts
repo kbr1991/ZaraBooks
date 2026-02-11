@@ -1,11 +1,12 @@
 // Professional Template - Corporate gray & black for CA firms and corporates
 
 import { DocumentData, TemplateFunction } from '../types';
-import { getDocumentTitle, getDateLabel, formatCurrencyValue, formatDateValue } from '../index';
+import { getDocumentTitle, getDateLabel, getPartyLabel, formatCurrencyValue, formatDateValue } from '../index';
 
 export const professionalTemplate: TemplateFunction = (data: DocumentData): string => {
   const title = getDocumentTitle(data.type);
   const dateLabels = getDateLabel(data.type);
+  const partyLabel = getPartyLabel(data.type);
   const secondaryDate = data.dueDate || data.expiryDate || data.deliveryDate;
 
   const logoHtml = data.company.logoUrl
@@ -288,7 +289,7 @@ export const professionalTemplate: TemplateFunction = (data: DocumentData): stri
 
       <div class="billing-section">
         <div class="billing-block">
-          <h3>Bill To</h3>
+          <h3>${partyLabel}</h3>
           <p class="name">${data.customer.name}</p>
           ${customerAddress ? `<p>${customerAddress}</p>` : ''}
           ${data.customer.gstin ? `<p style="margin-top: 8px;">GSTIN: ${data.customer.gstin}</p>` : ''}

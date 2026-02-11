@@ -226,8 +226,8 @@ router.patch('/:id', requireCompany, async (req: AuthenticatedRequest, res) => {
       return res.status(404).json({ error: 'Sales order not found' });
     }
 
-    if (order.status !== 'draft') {
-      return res.status(400).json({ error: 'Only draft orders can be edited' });
+    if (!['draft', 'confirmed'].includes(order.status)) {
+      return res.status(400).json({ error: 'Only draft or confirmed orders can be edited' });
     }
 
     const [updated] = await db.update(salesOrders)
@@ -427,6 +427,45 @@ router.post('/:id/convert-to-invoice', requireCompany, async (req: Authenticated
   }
 });
 
+// Cancel sales order
+router.post('/:id/cancel', requireCompany, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+
+    const order = await db.query.salesOrders.findFirst({
+      where: and(
+        eq(salesOrders.id, id),
+        eq(salesOrders.companyId, req.companyId!)
+      ),
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: 'Sales order not found' });
+    }
+
+    if (!['confirmed', 'processing'].includes(order.status)) {
+      return res.status(400).json({ error: 'Only confirmed or processing orders can be cancelled' });
+    }
+
+    if (order.convertedToInvoiceId) {
+      return res.status(400).json({ error: 'Cannot cancel order that has been converted to invoice' });
+    }
+
+    const [updated] = await db.update(salesOrders)
+      .set({
+        status: 'cancelled',
+        updatedAt: new Date(),
+      })
+      .where(eq(salesOrders.id, id))
+      .returning();
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Cancel sales order error:', error);
+    res.status(500).json({ error: 'Failed to cancel sales order' });
+  }
+});
+
 // Delete sales order (only drafts)
 router.delete('/:id', requireCompany, async (req: AuthenticatedRequest, res) => {
   try {
@@ -443,8 +482,11 @@ router.delete('/:id', requireCompany, async (req: AuthenticatedRequest, res) => 
       return res.status(404).json({ error: 'Sales order not found' });
     }
 
-    if (order.status !== 'draft') {
-      return res.status(400).json({ error: 'Only draft orders can be deleted' });
+    if (!['draft', 'confirmed'].includes(order.status)) {
+      return res.status(400).json({ error: 'Only draft or confirmed orders can be deleted' });
+    }
+    if (order.convertedToInvoiceId) {
+      return res.status(400).json({ error: 'Cannot delete order that has been converted to invoice' });
     }
 
     await db.delete(salesOrderLines).where(eq(salesOrderLines.salesOrderId, id));

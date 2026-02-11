@@ -40,7 +40,19 @@ import {
   XCircle,
   Receipt,
   Trash2,
+  Download,
+  Printer,
+  FileDown,
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { generateDocument, DocumentData, TemplateId } from '@/lib/document-templates';
+import TemplateSelector from '@/components/document/TemplateSelector';
+import { useAuth } from '@/hooks/useAuth';
 
 interface DebitNote {
   id: string;
@@ -110,6 +122,9 @@ export default function DebitNotes() {
     billId: '',
     amount: '',
   });
+  const { currentCompany } = useAuth();
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+  const [pendingDownloadId, setPendingDownloadId] = useState<string | null>(null);
 
   // Fetch debit notes
   const { data: debitNotes, isLoading } = useQuery<DebitNote[]>({
@@ -212,6 +227,27 @@ export default function DebitNotes() {
     },
   });
 
+  const cancelDebitNoteMutation = useMutation({
+    mutationFn: async (debitNoteId: string) => {
+      const response = await fetch(`/api/debit-notes/${debitNoteId}/cancel`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to cancel debit note');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['debit-notes'] });
+      toast({ title: 'Debit note cancelled' });
+    },
+    onError: (error: Error) => {
+      toast({ title: error.message, variant: 'destructive' });
+    },
+  });
+
   // Delete debit note mutation
   const deleteDebitNoteMutation = useMutation({
     mutationFn: async (debitNoteId: string) => {
@@ -242,6 +278,84 @@ export default function DebitNotes() {
       reason: '',
       items: [{ description: '', quantity: 1, rate: '', hsnSac: '', gstRate: '18' }],
     });
+  };
+
+  const handleOpenTemplateSelector = (id: string) => {
+    setPendingDownloadId(id);
+    setShowTemplateSelector(true);
+  };
+
+  const handleDownloadPDF = async (templateId: TemplateId, _action: 'print' | 'pdf') => {
+    if (!pendingDownloadId) return;
+    try {
+      const response = await fetch(`/api/debit-notes/${pendingDownloadId}`, { credentials: 'include' });
+      if (!response.ok) { toast({ title: 'Failed to load debit note', variant: 'destructive' }); return; }
+      const debitNote = await response.json();
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) { toast({ title: 'Please allow popups to download PDF', variant: 'destructive' }); return; }
+      const lines = debitNote.lines || [];
+      const subtotal = parseFloat(debitNote.subtotal || 0);
+      const cgst = parseFloat(debitNote.cgst || 0);
+      const sgst = parseFloat(debitNote.sgst || 0);
+      const igst = parseFloat(debitNote.igst || 0);
+      const total = parseFloat(debitNote.totalAmount || 0);
+      const documentData: DocumentData = {
+        type: 'debit_note',
+        documentNumber: debitNote.debitNoteNumber,
+        documentDate: debitNote.debitNoteDate,
+        company: {
+          name: currentCompany?.name || '',
+          legalName: currentCompany?.legalName,
+          logoUrl: currentCompany?.logoUrl,
+          address: currentCompany?.address,
+          city: currentCompany?.city,
+          state: currentCompany?.state,
+          pincode: currentCompany?.pincode,
+          gstin: currentCompany?.gstin,
+          pan: currentCompany?.pan,
+        },
+        customer: {
+          name: debitNote.vendor?.name || 'Vendor',
+          address: debitNote.vendor?.address,
+          city: debitNote.vendor?.city,
+          state: debitNote.vendor?.state,
+          pincode: debitNote.vendor?.pincode,
+          gstin: debitNote.vendor?.gstin,
+          email: debitNote.vendor?.email,
+        },
+        items: lines.map((line: any) => {
+          const qty = parseFloat(line.quantity) || 1;
+          const rate = parseFloat(line.unitPrice) || 0;
+          return {
+            description: line.description || '',
+            hsnSac: line.hsnSacCode || '',
+            quantity: qty,
+            rate: rate,
+            amount: qty * rate,
+            taxRate: parseFloat(line.taxRate) || 0,
+            taxAmount: parseFloat(line.taxAmount) || 0,
+          };
+        }),
+        subtotal,
+        taxBreakdown: { cgst, sgst, igst },
+        totalAmount: total,
+        notes: debitNote.notes,
+        status: debitNote.status,
+      };
+      const htmlContent = generateDocument(documentData, templateId);
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+      printWindow.onload = () => { setTimeout(() => { printWindow.print(); }, 250); };
+      setPendingDownloadId(null);
+    } catch (error) {
+      toast({ title: 'Failed to generate PDF', variant: 'destructive' });
+    }
+  };
+
+  const handleQuickDownload = async (id: string, action: 'print' | 'pdf') => {
+    setPendingDownloadId(id);
+    const defaultTemplate = (currentCompany?.defaultTemplate as TemplateId) || 'classic';
+    await handleDownloadPDF(defaultTemplate, action);
   };
 
   const addLineItem = () => {
@@ -453,6 +567,26 @@ export default function DebitNotes() {
                         >
                           <Eye className="h-4 w-4" />
                         </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <Download className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent>
+                            <DropdownMenuItem onClick={() => handleQuickDownload(debitNote.id, 'pdf')}>
+                              <FileDown className="h-4 w-4 mr-2" />
+                              Quick Download
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleQuickDownload(debitNote.id, 'print')}>
+                              <Printer className="h-4 w-4 mr-2" />
+                              Print
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleOpenTemplateSelector(debitNote.id)}>
+                              Choose Template...
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                         {debitNote.status === 'issued' && parseFloat(debitNote.balanceAmount) > 0 && (
                           <Button
                             variant="ghost"
@@ -479,6 +613,20 @@ export default function DebitNotes() {
                             disabled={deleteDebitNoteMutation.isPending}
                           >
                             <Trash2 className="h-4 w-4 text-red-500" />
+                          </Button>
+                        )}
+                        {debitNote.status === 'issued' && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              if (confirm('Are you sure you want to cancel this debit note?')) {
+                                cancelDebitNoteMutation.mutate(debitNote.id);
+                              }
+                            }}
+                            title="Cancel Debit Note"
+                          >
+                            <XCircle className="h-4 w-4 text-orange-500" />
                           </Button>
                         )}
                       </div>
@@ -814,6 +962,14 @@ export default function DebitNotes() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TemplateSelector
+        open={showTemplateSelector}
+        onOpenChange={setShowTemplateSelector}
+        defaultTemplate={(currentCompany?.defaultTemplate as TemplateId) || 'classic'}
+        onSelect={handleDownloadPDF}
+        documentType="debit_note"
+      />
     </div>
   );
 }

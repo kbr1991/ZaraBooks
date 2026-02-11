@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -41,7 +41,20 @@ import {
   Clock,
   AlertCircle,
   Wallet,
+  Download,
+  Printer,
+  FileDown,
+  XCircle,
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { generateDocument, DocumentData, TemplateId } from '@/lib/document-templates';
+import TemplateSelector from '@/components/document/TemplateSelector';
+import { useAuth } from '@/hooks/useAuth';
 
 interface Bill {
   id: string;
@@ -84,6 +97,7 @@ export default function Bills() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [selectedBill, setSelectedBill] = useState<Bill | null>(null);
+  const [editingBill, setEditingBill] = useState<Bill | null>(null);
   const [formData, setFormData] = useState({
     vendorId: '',
     vendorBillNumber: '',
@@ -97,6 +111,9 @@ export default function Bills() {
     paymentMode: 'bank',
     referenceNumber: '',
   });
+  const { currentCompany } = useAuth();
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+  const [pendingDownloadId, setPendingDownloadId] = useState<string | null>(null);
 
   // Fetch bills
   const { data: bills, isLoading } = useQuery<Bill[]>({
@@ -147,6 +164,30 @@ export default function Bills() {
     },
   });
 
+  // Update bill mutation
+  const updateBillMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      const response = await fetch(`/api/bills/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) throw new Error('Failed to update bill');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bills'] });
+      setShowCreateDialog(false);
+      setEditingBill(null);
+      resetForm();
+      toast({ title: 'Bill updated successfully' });
+    },
+    onError: () => {
+      toast({ title: 'Failed to update bill', variant: 'destructive' });
+    },
+  });
+
   // Record payment mutation
   const recordPaymentMutation = useMutation({
     mutationFn: async (data: { billId: string; payment: typeof paymentData }) => {
@@ -168,6 +209,27 @@ export default function Bills() {
     },
     onError: () => {
       toast({ title: 'Failed to record payment', variant: 'destructive' });
+    },
+  });
+
+  const cancelBillMutation = useMutation({
+    mutationFn: async (billId: string) => {
+      const response = await fetch(`/api/bills/${billId}/cancel`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to cancel bill');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bills'] });
+      toast({ title: 'Bill cancelled successfully' });
+    },
+    onError: (error: Error) => {
+      toast({ title: error.message, variant: 'destructive' });
     },
   });
 
@@ -201,6 +263,116 @@ export default function Bills() {
       dueDate: '',
       items: [{ description: '', quantity: 1, rate: '', hsnSac: '', gstRate: '18' }],
     });
+  };
+
+  const handleEditBill = async (bill: Bill) => {
+    const response = await fetch(`/api/bills/${bill.id}`, { credentials: 'include' });
+    if (response.ok) {
+      const fullBill = await response.json();
+      setEditingBill(fullBill);
+      setFormData({
+        vendorId: fullBill.vendorId,
+        vendorBillNumber: fullBill.vendorBillNumber || '',
+        billDate: fullBill.billDate,
+        dueDate: fullBill.dueDate || '',
+        items: fullBill.lines && fullBill.lines.length > 0
+          ? fullBill.lines.map((line: any) => ({
+              description: line.description || '',
+              quantity: parseFloat(line.quantity) || 1,
+              rate: line.unitPrice || '',
+              hsnSac: line.hsnSacCode || '',
+              gstRate: line.taxRate || '18',
+            }))
+          : [{ description: '', quantity: 1, rate: '', hsnSac: '', gstRate: '18' }],
+      });
+      setShowCreateDialog(true);
+    }
+  };
+
+  useEffect(() => {
+    if (!showCreateDialog) {
+      resetForm();
+      setEditingBill(null);
+    }
+  }, [showCreateDialog]);
+
+  const handleOpenTemplateSelector = (id: string) => {
+    setPendingDownloadId(id);
+    setShowTemplateSelector(true);
+  };
+
+  const handleDownloadPDF = async (templateId: TemplateId, _action: 'print' | 'pdf') => {
+    if (!pendingDownloadId) return;
+    try {
+      const response = await fetch(`/api/bills/${pendingDownloadId}`, { credentials: 'include' });
+      if (!response.ok) { toast({ title: 'Failed to load bill', variant: 'destructive' }); return; }
+      const bill = await response.json();
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) { toast({ title: 'Please allow popups to download PDF', variant: 'destructive' }); return; }
+      const lines = bill.lines || [];
+      const subtotal = parseFloat(bill.subtotal || 0);
+      const cgst = parseFloat(bill.cgst || 0);
+      const sgst = parseFloat(bill.sgst || 0);
+      const igst = parseFloat(bill.igst || 0);
+      const total = parseFloat(bill.totalAmount || 0);
+      const documentData: DocumentData = {
+        type: 'bill',
+        documentNumber: bill.billNumber,
+        documentDate: bill.billDate,
+        dueDate: bill.dueDate,
+        company: {
+          name: currentCompany?.name || '',
+          legalName: currentCompany?.legalName,
+          logoUrl: currentCompany?.logoUrl,
+          address: currentCompany?.address,
+          city: currentCompany?.city,
+          state: currentCompany?.state,
+          pincode: currentCompany?.pincode,
+          gstin: currentCompany?.gstin,
+          pan: currentCompany?.pan,
+        },
+        customer: {
+          name: bill.vendor?.name || 'Vendor',
+          address: bill.vendor?.address,
+          city: bill.vendor?.city,
+          state: bill.vendor?.state,
+          pincode: bill.vendor?.pincode,
+          gstin: bill.vendor?.gstin,
+          email: bill.vendor?.email,
+        },
+        items: lines.map((line: any) => {
+          const qty = parseFloat(line.quantity) || 1;
+          const rate = parseFloat(line.unitPrice) || 0;
+          return {
+            description: line.description || '',
+            hsnSac: line.hsnSacCode || '',
+            quantity: qty,
+            rate: rate,
+            amount: qty * rate,
+            taxRate: parseFloat(line.taxRate) || 0,
+            taxAmount: parseFloat(line.taxAmount) || 0,
+          };
+        }),
+        subtotal,
+        taxBreakdown: { cgst, sgst, igst },
+        totalAmount: total,
+        notes: bill.notes,
+        status: bill.status,
+      };
+      const htmlContent = generateDocument(documentData, templateId);
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+      printWindow.onload = () => { setTimeout(() => { printWindow.print(); }, 250); };
+      setPendingDownloadId(null);
+    } catch (error) {
+      toast({ title: 'Failed to generate PDF', variant: 'destructive' });
+    }
+  };
+
+  const handleQuickDownload = async (id: string, action: 'print' | 'pdf') => {
+    setPendingDownloadId(id);
+    const defaultTemplate = (currentCompany?.defaultTemplate as TemplateId) || 'classic';
+    await handleDownloadPDF(defaultTemplate, action);
   };
 
   const addLineItem = () => {
@@ -410,6 +582,26 @@ export default function Bills() {
                         >
                           <Eye className="h-4 w-4" />
                         </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <Download className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent>
+                            <DropdownMenuItem onClick={() => handleQuickDownload(bill.id, 'pdf')}>
+                              <FileDown className="h-4 w-4 mr-2" />
+                              Quick Download
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleQuickDownload(bill.id, 'print')}>
+                              <Printer className="h-4 w-4 mr-2" />
+                              Print
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleOpenTemplateSelector(bill.id)}>
+                              Choose Template...
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                         {['open', 'overdue'].includes(bill.status) && (
                           <Button
                             variant="ghost"
@@ -431,7 +623,7 @@ export default function Bills() {
                         )}
                         {['draft', 'open'].includes(bill.status) && (
                           <>
-                            <Button variant="ghost" size="icon">
+                            <Button variant="ghost" size="icon" onClick={() => handleEditBill(bill)}>
                               <Edit className="h-4 w-4" />
                             </Button>
                             <Button
@@ -448,6 +640,20 @@ export default function Bills() {
                             </Button>
                           </>
                         )}
+                        {['open', 'pending'].includes(bill.status) && parseFloat(bill.paidAmount || '0') === 0 && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              if (confirm('Are you sure you want to cancel this bill? This will reverse journal entries.')) {
+                                cancelBillMutation.mutate(bill.id);
+                              }
+                            }}
+                            title="Cancel Bill"
+                          >
+                            <XCircle className="h-4 w-4 text-orange-500" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -462,7 +668,7 @@ export default function Bills() {
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Create New Bill</DialogTitle>
+            <DialogTitle>{editingBill ? 'Edit Bill' : 'Create New Bill'}</DialogTitle>
             <DialogDescription>
               Record a bill from your vendor
             </DialogDescription>
@@ -619,19 +825,30 @@ export default function Bills() {
             <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
               Cancel
             </Button>
-            <Button
-              variant="outline"
-              disabled={createBillMutation.isPending}
-              onClick={() => createBillMutation.mutate(formData)}
-            >
-              Save as Draft
-            </Button>
-            <Button
-              onClick={() => createBillMutation.mutate(formData)}
-              disabled={!formData.vendorId || createBillMutation.isPending}
-            >
-              {createBillMutation.isPending ? 'Saving...' : 'Save Bill'}
-            </Button>
+            {editingBill ? (
+              <Button
+                disabled={updateBillMutation.isPending || !formData.vendorId}
+                onClick={() => updateBillMutation.mutate({ id: editingBill.id, data: formData })}
+              >
+                {updateBillMutation.isPending ? 'Updating...' : 'Update Bill'}
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  disabled={createBillMutation.isPending}
+                  onClick={() => createBillMutation.mutate(formData)}
+                >
+                  Save as Draft
+                </Button>
+                <Button
+                  onClick={() => createBillMutation.mutate(formData)}
+                  disabled={!formData.vendorId || createBillMutation.isPending}
+                >
+                  {createBillMutation.isPending ? 'Saving...' : 'Save Bill'}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -793,6 +1010,14 @@ export default function Bills() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TemplateSelector
+        open={showTemplateSelector}
+        onOpenChange={setShowTemplateSelector}
+        defaultTemplate={(currentCompany?.defaultTemplate as TemplateId) || 'classic'}
+        onSelect={handleDownloadPDF}
+        documentType="bill"
+      />
     </div>
   );
 }

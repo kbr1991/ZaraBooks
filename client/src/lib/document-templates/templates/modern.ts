@@ -1,11 +1,12 @@
 // Modern Template - Clean blue & teal gradient for tech and startups
 
 import { DocumentData, TemplateFunction } from '../types';
-import { getDocumentTitle, getDateLabel, formatCurrencyValue, formatDateValue } from '../index';
+import { getDocumentTitle, getDateLabel, getPartyLabel, formatCurrencyValue, formatDateValue } from '../index';
 
 export const modernTemplate: TemplateFunction = (data: DocumentData): string => {
   const title = getDocumentTitle(data.type);
   const dateLabels = getDateLabel(data.type);
+  const partyLabel = getPartyLabel(data.type);
   const secondaryDate = data.dueDate || data.expiryDate || data.deliveryDate;
 
   const logoHtml = data.company.logoUrl
@@ -273,7 +274,7 @@ export const modernTemplate: TemplateFunction = (data: DocumentData): string => 
             ${data.company.gstin ? `<p style="margin-top: 8px;"><strong>GSTIN:</strong> ${data.company.gstin}</p>` : ''}
           </div>
           <div class="info-card">
-            <h3>Bill To</h3>
+            <h3>${partyLabel}</h3>
             <p class="primary">${data.customer.name}</p>
             ${customerAddress ? `<p>${customerAddress}</p>` : ''}
             ${data.customer.gstin ? `<p style="margin-top: 8px;"><strong>GSTIN:</strong> ${data.customer.gstin}</p>` : ''}

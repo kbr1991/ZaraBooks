@@ -1,11 +1,12 @@
 // Classic Template - Traditional navy & gold design
 
 import { DocumentData, TemplateFunction } from '../types';
-import { getDocumentTitle, getDateLabel, formatCurrencyValue, formatDateValue } from '../index';
+import { getDocumentTitle, getDateLabel, getPartyLabel, formatCurrencyValue, formatDateValue } from '../index';
 
 export const classicTemplate: TemplateFunction = (data: DocumentData): string => {
   const title = getDocumentTitle(data.type);
   const dateLabels = getDateLabel(data.type);
+  const partyLabel = getPartyLabel(data.type);
   const secondaryDate = data.dueDate || data.expiryDate || data.deliveryDate;
 
   const logoHtml = data.company.logoUrl
@@ -452,7 +453,7 @@ export const classicTemplate: TemplateFunction = (data: DocumentData): string =>
 
         <div class="info-section">
           <div class="bill-to">
-            <h3>Bill To</h3>
+            <h3>${partyLabel}</h3>
             <div class="customer-name">${data.customer.name}</div>
             <div class="customer-details">
               ${customerAddress ? `<div>${customerAddress}</div>` : ''}

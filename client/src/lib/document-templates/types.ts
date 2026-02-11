@@ -2,7 +2,7 @@
 
 export type TemplateId = 'classic' | 'modern' | 'professional' | 'minimal';
 
-export type DocumentType = 'invoice' | 'quote' | 'sales_order';
+export type DocumentType = 'invoice' | 'quote' | 'sales_order' | 'purchase_order' | 'bill' | 'credit_note' | 'debit_note';
 
 export interface CompanyInfo {
   name: string;

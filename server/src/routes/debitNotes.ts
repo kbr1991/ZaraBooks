@@ -407,6 +407,59 @@ router.post('/:id/apply', requireCompany, async (req: AuthenticatedRequest, res)
   }
 });
 
+// Cancel debit note
+router.post('/:id/cancel', requireCompany, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+
+    const note = await db.query.debitNotes.findFirst({
+      where: and(
+        eq(debitNotes.id, id),
+        eq(debitNotes.companyId, req.companyId!)
+      ),
+    });
+
+    if (!note) {
+      return res.status(404).json({ error: 'Debit note not found' });
+    }
+
+    if (note.status !== 'issued') {
+      return res.status(400).json({ error: 'Only issued debit notes can be cancelled' });
+    }
+
+    if (parseFloat(note.appliedAmount || '0') > 0) {
+      return res.status(400).json({ error: 'Cannot cancel debit note that has been applied' });
+    }
+
+    // Reverse journal entries
+    const relatedJournals = await db.query.journalEntries.findMany({
+      where: and(
+        eq(journalEntries.companyId, req.companyId!),
+        eq(journalEntries.referenceType, 'debit_note'),
+        eq(journalEntries.referenceId, id)
+      ),
+    });
+
+    for (const je of relatedJournals) {
+      await db.delete(journalEntryLines).where(eq(journalEntryLines.journalEntryId, je.id));
+      await db.delete(journalEntries).where(eq(journalEntries.id, je.id));
+    }
+
+    const [updated] = await db.update(debitNotes)
+      .set({
+        status: 'cancelled',
+        updatedAt: new Date(),
+      })
+      .where(eq(debitNotes.id, id))
+      .returning();
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Cancel debit note error:', error);
+    res.status(500).json({ error: 'Failed to cancel debit note' });
+  }
+});
+
 // Delete debit note (only drafts)
 router.delete('/:id', requireCompany, async (req: AuthenticatedRequest, res) => {
   try {

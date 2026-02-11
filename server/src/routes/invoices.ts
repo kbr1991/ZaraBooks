@@ -583,6 +583,59 @@ router.get('/stats/summary', requireCompany, async (req: AuthenticatedRequest, r
   }
 });
 
+// Cancel invoice
+router.post('/:id/cancel', requireCompany, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+
+    const invoice = await db.query.invoices.findFirst({
+      where: and(
+        eq(invoices.id, id),
+        eq(invoices.companyId, req.companyId!)
+      ),
+    });
+
+    if (!invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    if (invoice.status !== 'sent') {
+      return res.status(400).json({ error: 'Only sent invoices can be cancelled' });
+    }
+
+    if (parseFloat(invoice.paidAmount || '0') > 0) {
+      return res.status(400).json({ error: 'Cannot cancel invoice with payments. Remove payments first.' });
+    }
+
+    // Reverse journal entries
+    const relatedJournals = await db.query.journalEntries.findMany({
+      where: and(
+        eq(journalEntries.companyId, req.companyId!),
+        eq(journalEntries.referenceType, 'invoice'),
+        eq(journalEntries.referenceId, id)
+      ),
+    });
+
+    for (const je of relatedJournals) {
+      await db.delete(journalEntryLines).where(eq(journalEntryLines.journalEntryId, je.id));
+      await db.delete(journalEntries).where(eq(journalEntries.id, je.id));
+    }
+
+    const [updated] = await db.update(invoices)
+      .set({
+        status: 'cancelled',
+        updatedAt: new Date(),
+      })
+      .where(eq(invoices.id, id))
+      .returning();
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Cancel invoice error:', error);
+    res.status(500).json({ error: 'Failed to cancel invoice' });
+  }
+});
+
 // Delete invoice (only drafts)
 router.delete('/:id', requireCompany, async (req: AuthenticatedRequest, res) => {
   try {

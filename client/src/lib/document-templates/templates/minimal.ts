@@ -1,11 +1,12 @@
 // Minimal Template - Simple monochrome design with lots of whitespace
 
 import { DocumentData, TemplateFunction } from '../types';
-import { getDocumentTitle, getDateLabel, formatCurrencyValue, formatDateValue } from '../index';
+import { getDocumentTitle, getDateLabel, getPartyLabel, formatCurrencyValue, formatDateValue } from '../index';
 
 export const minimalTemplate: TemplateFunction = (data: DocumentData): string => {
   const title = getDocumentTitle(data.type);
   const dateLabels = getDateLabel(data.type);
+  const partyLabel = getPartyLabel(data.type);
   const secondaryDate = data.dueDate || data.expiryDate || data.deliveryDate;
 
   const logoHtml = data.company.logoUrl
@@ -225,7 +226,7 @@ export const minimalTemplate: TemplateFunction = (data: DocumentData): string =>
 
       <div class="meta-section">
         <div class="address-block">
-          <div class="address-label">Billed To</div>
+          <div class="address-label">${partyLabel}</div>
           <div class="address-name">${data.customer.name}</div>
           ${customerAddress ? `<div class="address-details">${customerAddress}</div>` : ''}
           ${data.customer.gstin ? `<div class="address-details" style="margin-top: 4px;">GSTIN: ${data.customer.gstin}</div>` : ''}
