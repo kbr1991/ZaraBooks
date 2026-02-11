@@ -493,6 +493,39 @@ async function checkPendingReconciliation(
 }
 
 /**
+ * Creates a new alert manually
+ */
+export async function createAlert(
+  companyId: string,
+  data: {
+    alertType: string;
+    severity: 'info' | 'warning' | 'critical';
+    title: string;
+    message: string;
+    data?: any;
+    actionUrl?: string;
+    expiresAt?: Date;
+  }
+): Promise<SmartAlert> {
+  const [alert] = await db.insert(smartAlerts)
+    .values({
+      companyId,
+      alertType: data.alertType,
+      severity: data.severity,
+      title: data.title,
+      message: data.message,
+      data: data.data,
+      actionUrl: data.actionUrl,
+      expiresAt: data.expiresAt,
+      isRead: false,
+      isDismissed: false
+    })
+    .returning();
+
+  return alert;
+}
+
+/**
  * Gets unread alerts for a company
  */
 export async function getUnreadAlerts(companyId: string): Promise<SmartAlert[]> {
