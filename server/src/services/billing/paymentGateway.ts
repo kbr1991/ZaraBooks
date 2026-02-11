@@ -38,6 +38,20 @@ interface RazorpayCredentials {
 }
 
 /**
+ * Gets the active payment gateway configuration for a company
+ */
+export async function getGatewayConfig(companyId: string) {
+  const [config] = await db.select()
+    .from(paymentGatewayConfig)
+    .where(and(
+      eq(paymentGatewayConfig.companyId, companyId),
+      eq(paymentGatewayConfig.isActive, true)
+    ));
+
+  return config || null;
+}
+
+/**
  * Creates a payment link using the configured gateway
  */
 export async function createPaymentLink(
