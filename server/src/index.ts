@@ -49,6 +49,16 @@ import adminRoutes from './routes/admin';
 import partnerRoutes from './routes/partner';
 import tenantRoutes from './routes/tenant';
 
+// Smart features routes
+import bankFeedsRoutes from './routes/bankFeeds';
+import documentScanRoutes from './routes/documentScan';
+import recurringInvoicesRoutes from './routes/recurringInvoices';
+import paymentGatewayRoutes from './routes/paymentGateway';
+import analyticsRoutes from './routes/analytics';
+import alertsRoutes from './routes/alerts';
+import voiceRoutes from './routes/voice';
+import integrationsRoutes from './routes/integrations';
+
 const { Pool } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -170,6 +180,16 @@ app.use('/api/document-templates', documentTemplatesRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/partner', partnerRoutes);
 app.use('/api/tenant', tenantRoutes);
+
+// Smart features routes
+app.use('/api/bank-feeds', bankFeedsRoutes);
+app.use('/api/document-scan', documentScanRoutes);
+app.use('/api/recurring-invoices', recurringInvoicesRoutes);
+app.use('/api/payment-gateway', paymentGatewayRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/alerts', alertsRoutes);
+app.use('/api/voice', voiceRoutes);
+app.use('/api/integrations', integrationsRoutes);
 
 // Health check (basic - always returns ok for Railway health checks)
 app.get('/api/health', (_req: Request, res: Response) => {

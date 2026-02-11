@@ -67,6 +67,15 @@ const CostCenters = lazy(() => import('@/pages/CostCenters'));
 // Settings pages
 const DocumentTemplates = lazy(() => import('@/pages/DocumentTemplates'));
 
+// Smart features pages
+const BankFeeds = lazy(() => import('@/pages/BankFeeds'));
+const DocumentScan = lazy(() => import('@/pages/DocumentScan'));
+const RecurringInvoices = lazy(() => import('@/pages/RecurringInvoices'));
+const CashFlowForecast = lazy(() => import('@/pages/CashFlowForecast'));
+const SmartAlerts = lazy(() => import('@/pages/SmartAlerts'));
+const VoiceEntry = lazy(() => import('@/pages/VoiceEntry'));
+const Integrations = lazy(() => import('@/pages/Integrations'));
+
 // Public pages
 const AcceptInvite = lazy(() => import('@/pages/AcceptInvite'));
 
@@ -422,6 +431,42 @@ export default function App() {
           <Route path="document-templates" element={
             <Suspense fallback={<PageLoader />}>
               <DocumentTemplates />
+            </Suspense>
+          } />
+          {/* Smart features routes */}
+          <Route path="bank-feeds" element={
+            <Suspense fallback={<PageLoader />}>
+              <BankFeeds />
+            </Suspense>
+          } />
+          <Route path="document-scan" element={
+            <Suspense fallback={<PageLoader />}>
+              <DocumentScan />
+            </Suspense>
+          } />
+          <Route path="recurring-invoices" element={
+            <Suspense fallback={<PageLoader />}>
+              <RecurringInvoices />
+            </Suspense>
+          } />
+          <Route path="cash-flow-forecast" element={
+            <Suspense fallback={<PageLoader />}>
+              <CashFlowForecast />
+            </Suspense>
+          } />
+          <Route path="smart-alerts" element={
+            <Suspense fallback={<PageLoader />}>
+              <SmartAlerts />
+            </Suspense>
+          } />
+          <Route path="voice-entry" element={
+            <Suspense fallback={<PageLoader />}>
+              <VoiceEntry />
+            </Suspense>
+          } />
+          <Route path="integrations" element={
+            <Suspense fallback={<PageLoader />}>
+              <Integrations />
             </Suspense>
           } />
         </Route>

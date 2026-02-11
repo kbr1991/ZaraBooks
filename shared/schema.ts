@@ -2218,6 +2218,634 @@ export const partnerPayoutsRelations = relations(partnerPayouts, ({ one, many })
   commissions: many(commissions),
 }));
 
+// ==================== SMART FEATURES ====================
+
+// Feature 1: Bank Feeds & Reconciliation Enums
+export const bankConnectionTypeEnum = pgEnum('bank_connection_type', ['api', 'aggregator', 'manual']);
+export const bankFeedProviderEnum = pgEnum('bank_feed_provider', ['yodlee', 'plaid', 'account_aggregator', 'manual']);
+export const bankFeedReconciliationStatusEnum = pgEnum('bank_feed_reconciliation_status', ['pending', 'matched', 'excluded', 'created']);
+export const categorizationSourceEnum = pgEnum('categorization_source', ['rule', 'ml', 'manual']);
+
+// Feature 2: OCR & Document Processing Enums
+export const documentTypeEnum = pgEnum('document_type', ['invoice', 'bill', 'receipt', 'credit_note', 'debit_note']);
+export const ocrStatusEnum = pgEnum('ocr_status', ['pending', 'processing', 'completed', 'failed']);
+export const documentSourceEnum = pgEnum('document_source', ['upload', 'camera', 'email', 'whatsapp']);
+
+// Feature 3: Recurring Invoices & Payment Enums
+export const recurringFrequencyEnum = pgEnum('recurring_frequency', ['weekly', 'monthly', 'quarterly', 'half_yearly', 'yearly']);
+export const reminderLevelEnum = pgEnum('reminder_level', ['gentle', 'firm', 'urgent', 'final']);
+export const reminderStatusEnum = pgEnum('reminder_status', ['pending', 'sent', 'failed', 'cancelled']);
+export const paymentLinkStatusEnum = pgEnum('payment_link_status', ['active', 'paid', 'expired', 'cancelled']);
+export const paymentGatewayEnum = pgEnum('payment_gateway', ['razorpay', 'payu', 'cashfree', 'stripe']);
+
+// Feature 4: Smart Alerts Enums
+export const alertTypeEnum = pgEnum('alert_type', ['low_cash', 'gst_due', 'tds_threshold', 'invoice_overdue', 'bill_due', 'expense_limit', 'reconciliation_pending', 'filing_deadline', 'payment_received', 'unusual_transaction']);
+export const alertSeverityEnum = pgEnum('alert_severity', ['info', 'warning', 'critical']);
+
+// Feature 6: Voice Interface Enums
+export const voiceIntentEnum = pgEnum('voice_intent', ['create_expense', 'create_invoice', 'check_balance', 'get_report', 'create_payment', 'query_party', 'unknown']);
+
+// Feature 7: Integration Enums
+export const integrationPlatformEnum = pgEnum('integration_platform', ['shopify', 'woocommerce', 'meesho', 'amazon', 'flipkart', 'custom']);
+export const webhookEventTypeEnum = pgEnum('webhook_event_type', ['invoice.created', 'invoice.sent', 'invoice.paid', 'payment.received', 'payment.made', 'expense.created', 'bill.created', 'bill.paid', 'gst.filed']);
+
+// ==================== BANK CONNECTIONS ====================
+export const bankConnections = pgTable('bank_connections', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id', { length: 36 }).references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  bankAccountId: varchar('bank_account_id', { length: 36 }).references(() => bankAccounts.id),
+  bankName: varchar('bank_name', { length: 100 }).notNull(),
+  connectionType: bankConnectionTypeEnum('connection_type').notNull(),
+  provider: bankFeedProviderEnum('provider'),
+  credentials: text('credentials'), // encrypted JSON
+  lastSyncAt: timestamp('last_sync_at'),
+  syncFrequency: varchar('sync_frequency', { length: 20 }).default('daily'),
+  isActive: boolean('is_active').default(true),
+  syncError: text('sync_error'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_bank_connections_company').on(table.companyId),
+  index('idx_bank_connections_bank_account').on(table.bankAccountId),
+]);
+
+// ==================== BANK FEED TRANSACTIONS ====================
+export const bankFeedTransactions = pgTable('bank_feed_transactions', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id', { length: 36 }).references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  bankConnectionId: varchar('bank_connection_id', { length: 36 }).references(() => bankConnections.id),
+  bankAccountId: varchar('bank_account_id', { length: 36 }).references(() => bankAccounts.id),
+  externalTransactionId: varchar('external_transaction_id', { length: 100 }),
+  transactionDate: date('transaction_date').notNull(),
+  valueDate: date('value_date'),
+  description: text('description').notNull(),
+  referenceNumber: varchar('reference_number', { length: 100 }),
+  debitAmount: decimal('debit_amount', { precision: 18, scale: 2 }),
+  creditAmount: decimal('credit_amount', { precision: 18, scale: 2 }),
+  runningBalance: decimal('running_balance', { precision: 18, scale: 2 }),
+  // AI Categorization
+  suggestedAccountId: varchar('suggested_account_id', { length: 36 }).references(() => chartOfAccounts.id),
+  suggestedPartyId: varchar('suggested_party_id', { length: 36 }).references(() => parties.id),
+  confidenceScore: decimal('confidence_score', { precision: 5, scale: 2 }),
+  categorizationSource: categorizationSourceEnum('categorization_source'),
+  // Matching
+  reconciliationStatus: bankFeedReconciliationStatusEnum('reconciliation_status').default('pending'),
+  matchedJournalEntryId: varchar('matched_journal_entry_id', { length: 36 }).references(() => journalEntries.id),
+  matchedInvoiceId: varchar('matched_invoice_id', { length: 36 }).references(() => invoices.id),
+  matchedBillId: varchar('matched_bill_id', { length: 36 }).references(() => bills.id),
+  matchedExpenseId: varchar('matched_expense_id', { length: 36 }).references(() => expenses.id),
+  matchedPaymentReceivedId: varchar('matched_payment_received_id', { length: 36 }).references(() => paymentsReceived.id),
+  matchedPaymentMadeId: varchar('matched_payment_made_id', { length: 36 }).references(() => paymentsMade.id),
+  // Duplicate detection
+  isDuplicate: boolean('is_duplicate').default(false),
+  duplicateOfId: varchar('duplicate_of_id', { length: 36 }),
+  // Metadata
+  rawData: jsonb('raw_data'), // Original bank statement data
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_bank_feed_txn_company').on(table.companyId),
+  index('idx_bank_feed_txn_date').on(table.transactionDate),
+  index('idx_bank_feed_txn_status').on(table.reconciliationStatus),
+  index('idx_bank_feed_txn_external').on(table.externalTransactionId),
+]);
+
+// ==================== CATEGORIZATION RULES ====================
+export const categorizationRules = pgTable('categorization_rules', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id', { length: 36 }).references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  ruleName: varchar('rule_name', { length: 100 }).notNull(),
+  priority: integer('priority').default(0),
+  // Conditions: [{field: 'description', operator: 'contains', value: 'AMAZON'}]
+  conditions: jsonb('conditions').notNull(),
+  targetAccountId: varchar('target_account_id', { length: 36 }).references(() => chartOfAccounts.id),
+  targetPartyId: varchar('target_party_id', { length: 36 }).references(() => parties.id),
+  isActive: boolean('is_active').default(true),
+  usageCount: integer('usage_count').default(0),
+  lastUsedAt: timestamp('last_used_at'),
+  createdByUserId: varchar('created_by_user_id', { length: 36 }).references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_cat_rules_company').on(table.companyId),
+  index('idx_cat_rules_priority').on(table.companyId, table.priority),
+]);
+
+// ==================== DOCUMENT SCANS (OCR) ====================
+export const documentScans = pgTable('document_scans', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id', { length: 36 }).references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  documentType: documentTypeEnum('document_type').notNull(),
+  fileUrl: text('file_url').notNull(),
+  fileName: varchar('file_name', { length: 255 }),
+  mimeType: varchar('mime_type', { length: 50 }),
+  fileSize: integer('file_size'),
+  source: documentSourceEnum('source').default('upload'),
+  // OCR Processing
+  ocrStatus: ocrStatusEnum('ocr_status').default('pending'),
+  ocrProvider: varchar('ocr_provider', { length: 30 }),
+  ocrConfidence: decimal('ocr_confidence', { precision: 5, scale: 2 }),
+  processingTime: integer('processing_time'), // milliseconds
+  // Extracted Data
+  extractedData: jsonb('extracted_data'), // {vendor, date, amount, gstin, items[], taxes, totalAmount}
+  languageDetected: varchar('language_detected', { length: 10 }),
+  // Created Records
+  createdExpenseId: varchar('created_expense_id', { length: 36 }).references(() => expenses.id),
+  createdBillId: varchar('created_bill_id', { length: 36 }).references(() => bills.id),
+  createdInvoiceId: varchar('created_invoice_id', { length: 36 }).references(() => invoices.id),
+  // Review
+  needsReview: boolean('needs_review').default(true),
+  reviewedByUserId: varchar('reviewed_by_user_id', { length: 36 }).references(() => users.id),
+  reviewedAt: timestamp('reviewed_at'),
+  reviewNotes: text('review_notes'),
+  // Metadata
+  uploadedByUserId: varchar('uploaded_by_user_id', { length: 36 }).references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_doc_scans_company').on(table.companyId),
+  index('idx_doc_scans_status').on(table.ocrStatus),
+  index('idx_doc_scans_review').on(table.needsReview),
+]);
+
+// ==================== RECURRING INVOICES ====================
+export const recurringInvoices = pgTable('recurring_invoices', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id', { length: 36 }).references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  customerId: varchar('customer_id', { length: 36 }).references(() => parties.id).notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  frequency: recurringFrequencyEnum('frequency').notNull(),
+  startDate: date('start_date').notNull(),
+  endDate: date('end_date'),
+  nextGenerateDate: date('next_generate_date'),
+  // Template
+  templateData: jsonb('template_data').notNull(), // {lines[], notes, terms, discountAmount, discountPercent}
+  // Auto-send settings
+  autoSend: boolean('auto_send').default(false),
+  sendMethod: varchar('send_method', { length: 20 }).default('email'), // email, whatsapp, both
+  sendDaysBefore: integer('send_days_before').default(0), // Days before due date to send
+  // Status
+  isActive: boolean('is_active').default(true),
+  isPaused: boolean('is_paused').default(false),
+  pauseReason: text('pause_reason'),
+  // Stats
+  lastGeneratedAt: timestamp('last_generated_at'),
+  totalGenerated: integer('total_generated').default(0),
+  totalAmount: decimal('total_amount', { precision: 18, scale: 2 }).default('0'),
+  // Metadata
+  createdByUserId: varchar('created_by_user_id', { length: 36 }).references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_recurring_inv_company').on(table.companyId),
+  index('idx_recurring_inv_customer').on(table.customerId),
+  index('idx_recurring_inv_next_date').on(table.nextGenerateDate),
+]);
+
+// ==================== PAYMENT REMINDERS ====================
+export const paymentReminders = pgTable('payment_reminders', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id', { length: 36 }).references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  invoiceId: varchar('invoice_id', { length: 36 }).references(() => invoices.id).notNull(),
+  reminderLevel: reminderLevelEnum('reminder_level').notNull(),
+  scheduledDate: date('scheduled_date').notNull(),
+  sentAt: timestamp('sent_at'),
+  sendMethod: varchar('send_method', { length: 20 }), // email, sms, whatsapp
+  status: reminderStatusEnum('status').default('pending'),
+  // Message content
+  subject: varchar('subject', { length: 255 }),
+  message: text('message'),
+  // Response
+  responseReceived: boolean('response_received').default(false),
+  responseText: text('response_text'),
+  // Error tracking
+  errorMessage: text('error_message'),
+  retryCount: integer('retry_count').default(0),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_payment_reminders_company').on(table.companyId),
+  index('idx_payment_reminders_invoice').on(table.invoiceId),
+  index('idx_payment_reminders_date').on(table.scheduledDate),
+  index('idx_payment_reminders_status').on(table.status),
+]);
+
+// ==================== PAYMENT GATEWAY CONFIG ====================
+export const paymentGatewayConfig = pgTable('payment_gateway_config', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id', { length: 36 }).references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  gateway: paymentGatewayEnum('gateway').notNull(),
+  displayName: varchar('display_name', { length: 100 }),
+  isActive: boolean('is_active').default(true),
+  isPrimary: boolean('is_primary').default(false),
+  // Credentials (encrypted)
+  credentials: text('credentials'),
+  webhookSecret: text('webhook_secret'),
+  // Settings
+  settings: jsonb('settings'), // {enabledMethods: ['upi', 'card', 'netbanking'], autoCapture: true}
+  // Test mode
+  isTestMode: boolean('is_test_mode').default(true),
+  // Stats
+  totalTransactions: integer('total_transactions').default(0),
+  totalAmount: decimal('total_amount', { precision: 18, scale: 2 }).default('0'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_payment_gateway_company').on(table.companyId),
+  uniqueIndex('idx_payment_gateway_company_gateway').on(table.companyId, table.gateway),
+]);
+
+// ==================== PAYMENT LINKS ====================
+export const paymentLinks = pgTable('payment_links', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id', { length: 36 }).references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  invoiceId: varchar('invoice_id', { length: 36 }).references(() => invoices.id),
+  customerId: varchar('customer_id', { length: 36 }).references(() => parties.id),
+  gateway: paymentGatewayEnum('gateway').notNull(),
+  gatewayLinkId: varchar('gateway_link_id', { length: 100 }),
+  gatewayOrderId: varchar('gateway_order_id', { length: 100 }),
+  shortUrl: varchar('short_url', { length: 255 }),
+  amount: decimal('amount', { precision: 18, scale: 2 }).notNull(),
+  currency: varchar('currency', { length: 3 }).default('INR'),
+  description: text('description'),
+  status: paymentLinkStatusEnum('status').default('active'),
+  expiresAt: timestamp('expires_at'),
+  // Payment received
+  paymentReceivedAt: timestamp('payment_received_at'),
+  paymentMethod: varchar('payment_method', { length: 50 }),
+  gatewayPaymentId: varchar('gateway_payment_id', { length: 100 }),
+  // Linked payment record
+  paymentReceivedId: varchar('payment_received_id', { length: 36 }).references(() => paymentsReceived.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_payment_links_company').on(table.companyId),
+  index('idx_payment_links_invoice').on(table.invoiceId),
+  index('idx_payment_links_gateway_id').on(table.gatewayLinkId),
+  index('idx_payment_links_status').on(table.status),
+]);
+
+// ==================== CASH FLOW FORECASTS ====================
+export const cashFlowForecasts = pgTable('cash_flow_forecasts', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id', { length: 36 }).references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  forecastDate: date('forecast_date').notNull(),
+  forecastType: varchar('forecast_type', { length: 20 }).notNull(), // '7_day', '30_day', '90_day'
+  // Predictions
+  predictedInflows: decimal('predicted_inflows', { precision: 18, scale: 2 }),
+  predictedOutflows: decimal('predicted_outflows', { precision: 18, scale: 2 }),
+  predictedBalance: decimal('predicted_balance', { precision: 18, scale: 2 }),
+  currentBalance: decimal('current_balance', { precision: 18, scale: 2 }),
+  // Confidence
+  confidenceLevel: decimal('confidence_level', { precision: 5, scale: 2 }),
+  // Breakdown
+  breakdown: jsonb('breakdown'), // {receivables: [], payables: [], recurring: [], historical: []}
+  // Model info
+  modelVersion: varchar('model_version', { length: 20 }),
+  dataPointsUsed: integer('data_points_used'),
+  generatedAt: timestamp('generated_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_cash_flow_forecast_company').on(table.companyId),
+  index('idx_cash_flow_forecast_date').on(table.forecastDate),
+]);
+
+// ==================== SMART ALERTS ====================
+export const smartAlerts = pgTable('smart_alerts', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id', { length: 36 }).references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  alertType: alertTypeEnum('alert_type').notNull(),
+  severity: alertSeverityEnum('severity').notNull(),
+  title: varchar('title', { length: 255 }).notNull(),
+  message: text('message').notNull(),
+  data: jsonb('data'), // Context-specific data
+  // Related entity
+  entityType: varchar('entity_type', { length: 50 }),
+  entityId: varchar('entity_id', { length: 36 }),
+  // Status
+  isRead: boolean('is_read').default(false),
+  readAt: timestamp('read_at'),
+  isDismissed: boolean('is_dismissed').default(false),
+  dismissedAt: timestamp('dismissed_at'),
+  dismissedByUserId: varchar('dismissed_by_user_id', { length: 36 }).references(() => users.id),
+  // Action
+  actionUrl: varchar('action_url', { length: 255 }),
+  actionLabel: varchar('action_label', { length: 50 }),
+  actionTaken: boolean('action_taken').default(false),
+  // Expiry
+  expiresAt: timestamp('expires_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_smart_alerts_company').on(table.companyId),
+  index('idx_smart_alerts_type').on(table.alertType),
+  index('idx_smart_alerts_unread').on(table.companyId, table.isRead),
+  index('idx_smart_alerts_severity').on(table.severity),
+]);
+
+// ==================== VOICE TRANSCRIPTIONS ====================
+export const voiceTranscriptions = pgTable('voice_transcriptions', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id', { length: 36 }).references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  userId: varchar('user_id', { length: 36 }).references(() => users.id).notNull(),
+  audioUrl: text('audio_url'),
+  audioDuration: integer('audio_duration'), // seconds
+  // Transcription
+  transcription: text('transcription'),
+  transcriptionConfidence: decimal('transcription_confidence', { precision: 5, scale: 2 }),
+  language: varchar('language', { length: 10 }).default('en-IN'),
+  // Intent parsing
+  parsedIntent: voiceIntentEnum('parsed_intent'),
+  parsedEntities: jsonb('parsed_entities'), // {amount, party, date, description, category}
+  intentConfidence: decimal('intent_confidence', { precision: 5, scale: 2 }),
+  // Action
+  actionTaken: varchar('action_taken', { length: 50 }),
+  createdEntryType: varchar('created_entry_type', { length: 50 }), // expense, invoice, payment
+  createdEntryId: varchar('created_entry_id', { length: 36 }),
+  // Error handling
+  errorMessage: text('error_message'),
+  requiresConfirmation: boolean('requires_confirmation').default(true),
+  confirmedAt: timestamp('confirmed_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_voice_transcriptions_company').on(table.companyId),
+  index('idx_voice_transcriptions_user').on(table.userId),
+  index('idx_voice_transcriptions_intent').on(table.parsedIntent),
+]);
+
+// ==================== INTEGRATION CONNECTIONS ====================
+export const integrationConnections = pgTable('integration_connections', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id', { length: 36 }).references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  platform: integrationPlatformEnum('platform').notNull(),
+  connectionName: varchar('connection_name', { length: 100 }),
+  // Connection details
+  storeUrl: varchar('store_url', { length: 255 }),
+  credentials: text('credentials'), // encrypted
+  accessToken: text('access_token'),
+  refreshToken: text('refresh_token'),
+  tokenExpiresAt: timestamp('token_expires_at'),
+  // Sync settings
+  syncSettings: jsonb('sync_settings'), // {syncOrders: true, syncProducts: true, syncCustomers: true}
+  syncDirection: varchar('sync_direction', { length: 20 }).default('pull'), // pull, push, bidirectional
+  // Status
+  lastSyncAt: timestamp('last_sync_at'),
+  lastSyncStatus: varchar('last_sync_status', { length: 20 }),
+  lastSyncError: text('last_sync_error'),
+  syncInProgress: boolean('sync_in_progress').default(false),
+  // Stats
+  totalOrdersSynced: integer('total_orders_synced').default(0),
+  totalProductsSynced: integer('total_products_synced').default(0),
+  isActive: boolean('is_active').default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_integration_conn_company').on(table.companyId),
+  index('idx_integration_conn_platform').on(table.platform),
+]);
+
+// ==================== WEBHOOKS ====================
+export const webhooks = pgTable('webhooks', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id', { length: 36 }).references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  name: varchar('name', { length: 100 }).notNull(),
+  eventType: webhookEventTypeEnum('event_type').notNull(),
+  targetUrl: varchar('target_url', { length: 500 }).notNull(),
+  secret: text('secret'),
+  // Headers
+  headers: jsonb('headers'), // {Authorization: 'Bearer xxx', X-Custom: 'value'}
+  // Status
+  isActive: boolean('is_active').default(true),
+  // Stats
+  totalTriggered: integer('total_triggered').default(0),
+  lastTriggeredAt: timestamp('last_triggered_at'),
+  lastStatus: integer('last_status'),
+  lastError: text('last_error'),
+  consecutiveFailures: integer('consecutive_failures').default(0),
+  // Auto-disable after failures
+  autoDisabledAt: timestamp('auto_disabled_at'),
+  createdByUserId: varchar('created_by_user_id', { length: 36 }).references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_webhooks_company').on(table.companyId),
+  index('idx_webhooks_event').on(table.eventType),
+]);
+
+// ==================== WEBHOOK LOGS ====================
+export const webhookLogs = pgTable('webhook_logs', {
+  id: varchar('id', { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  webhookId: varchar('webhook_id', { length: 36 }).references(() => webhooks.id, { onDelete: 'cascade' }).notNull(),
+  eventType: webhookEventTypeEnum('event_type').notNull(),
+  payload: jsonb('payload'),
+  responseStatus: integer('response_status'),
+  responseBody: text('response_body'),
+  durationMs: integer('duration_ms'),
+  error: text('error'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_webhook_logs_webhook').on(table.webhookId),
+  index('idx_webhook_logs_created').on(table.createdAt),
+]);
+
+// ==================== SMART FEATURES RELATIONS ====================
+
+export const bankConnectionsRelations = relations(bankConnections, ({ one, many }) => ({
+  company: one(companies, {
+    fields: [bankConnections.companyId],
+    references: [companies.id],
+  }),
+  bankAccount: one(bankAccounts, {
+    fields: [bankConnections.bankAccountId],
+    references: [bankAccounts.id],
+  }),
+  transactions: many(bankFeedTransactions),
+}));
+
+export const bankFeedTransactionsRelations = relations(bankFeedTransactions, ({ one }) => ({
+  company: one(companies, {
+    fields: [bankFeedTransactions.companyId],
+    references: [companies.id],
+  }),
+  bankConnection: one(bankConnections, {
+    fields: [bankFeedTransactions.bankConnectionId],
+    references: [bankConnections.id],
+  }),
+  bankAccount: one(bankAccounts, {
+    fields: [bankFeedTransactions.bankAccountId],
+    references: [bankAccounts.id],
+  }),
+  suggestedAccount: one(chartOfAccounts, {
+    fields: [bankFeedTransactions.suggestedAccountId],
+    references: [chartOfAccounts.id],
+  }),
+  suggestedParty: one(parties, {
+    fields: [bankFeedTransactions.suggestedPartyId],
+    references: [parties.id],
+  }),
+  matchedJournalEntry: one(journalEntries, {
+    fields: [bankFeedTransactions.matchedJournalEntryId],
+    references: [journalEntries.id],
+  }),
+  matchedInvoice: one(invoices, {
+    fields: [bankFeedTransactions.matchedInvoiceId],
+    references: [invoices.id],
+  }),
+  matchedBill: one(bills, {
+    fields: [bankFeedTransactions.matchedBillId],
+    references: [bills.id],
+  }),
+}));
+
+export const categorizationRulesRelations = relations(categorizationRules, ({ one }) => ({
+  company: one(companies, {
+    fields: [categorizationRules.companyId],
+    references: [companies.id],
+  }),
+  targetAccount: one(chartOfAccounts, {
+    fields: [categorizationRules.targetAccountId],
+    references: [chartOfAccounts.id],
+  }),
+  targetParty: one(parties, {
+    fields: [categorizationRules.targetPartyId],
+    references: [parties.id],
+  }),
+  createdBy: one(users, {
+    fields: [categorizationRules.createdByUserId],
+    references: [users.id],
+  }),
+}));
+
+export const documentScansRelations = relations(documentScans, ({ one }) => ({
+  company: one(companies, {
+    fields: [documentScans.companyId],
+    references: [companies.id],
+  }),
+  createdExpense: one(expenses, {
+    fields: [documentScans.createdExpenseId],
+    references: [expenses.id],
+  }),
+  createdBill: one(bills, {
+    fields: [documentScans.createdBillId],
+    references: [bills.id],
+  }),
+  createdInvoice: one(invoices, {
+    fields: [documentScans.createdInvoiceId],
+    references: [invoices.id],
+  }),
+  reviewedBy: one(users, {
+    fields: [documentScans.reviewedByUserId],
+    references: [users.id],
+  }),
+  uploadedBy: one(users, {
+    fields: [documentScans.uploadedByUserId],
+    references: [users.id],
+  }),
+}));
+
+export const recurringInvoicesRelations = relations(recurringInvoices, ({ one }) => ({
+  company: one(companies, {
+    fields: [recurringInvoices.companyId],
+    references: [companies.id],
+  }),
+  customer: one(parties, {
+    fields: [recurringInvoices.customerId],
+    references: [parties.id],
+  }),
+  createdBy: one(users, {
+    fields: [recurringInvoices.createdByUserId],
+    references: [users.id],
+  }),
+}));
+
+export const paymentRemindersRelations = relations(paymentReminders, ({ one }) => ({
+  company: one(companies, {
+    fields: [paymentReminders.companyId],
+    references: [companies.id],
+  }),
+  invoice: one(invoices, {
+    fields: [paymentReminders.invoiceId],
+    references: [invoices.id],
+  }),
+}));
+
+export const paymentGatewayConfigRelations = relations(paymentGatewayConfig, ({ one }) => ({
+  company: one(companies, {
+    fields: [paymentGatewayConfig.companyId],
+    references: [companies.id],
+  }),
+}));
+
+export const paymentLinksRelations = relations(paymentLinks, ({ one }) => ({
+  company: one(companies, {
+    fields: [paymentLinks.companyId],
+    references: [companies.id],
+  }),
+  invoice: one(invoices, {
+    fields: [paymentLinks.invoiceId],
+    references: [invoices.id],
+  }),
+  customer: one(parties, {
+    fields: [paymentLinks.customerId],
+    references: [parties.id],
+  }),
+  paymentReceived: one(paymentsReceived, {
+    fields: [paymentLinks.paymentReceivedId],
+    references: [paymentsReceived.id],
+  }),
+}));
+
+export const cashFlowForecastsRelations = relations(cashFlowForecasts, ({ one }) => ({
+  company: one(companies, {
+    fields: [cashFlowForecasts.companyId],
+    references: [companies.id],
+  }),
+}));
+
+export const smartAlertsRelations = relations(smartAlerts, ({ one }) => ({
+  company: one(companies, {
+    fields: [smartAlerts.companyId],
+    references: [companies.id],
+  }),
+  dismissedBy: one(users, {
+    fields: [smartAlerts.dismissedByUserId],
+    references: [users.id],
+  }),
+}));
+
+export const voiceTranscriptionsRelations = relations(voiceTranscriptions, ({ one }) => ({
+  company: one(companies, {
+    fields: [voiceTranscriptions.companyId],
+    references: [companies.id],
+  }),
+  user: one(users, {
+    fields: [voiceTranscriptions.userId],
+    references: [users.id],
+  }),
+}));
+
+export const integrationConnectionsRelations = relations(integrationConnections, ({ one }) => ({
+  company: one(companies, {
+    fields: [integrationConnections.companyId],
+    references: [companies.id],
+  }),
+}));
+
+export const webhooksRelations = relations(webhooks, ({ one, many }) => ({
+  company: one(companies, {
+    fields: [webhooks.companyId],
+    references: [companies.id],
+  }),
+  createdBy: one(users, {
+    fields: [webhooks.createdByUserId],
+    references: [users.id],
+  }),
+  logs: many(webhookLogs),
+}));
+
+export const webhookLogsRelations = relations(webhookLogs, ({ one }) => ({
+  webhook: one(webhooks, {
+    fields: [webhookLogs.webhookId],
+    references: [webhooks.id],
+  }),
+}));
+
 // ==================== ZOD SCHEMAS ====================
 
 export const insertUserSchema = createInsertSchema(users).omit({
@@ -2530,6 +3158,107 @@ export const insertPartnerPayoutSchema = createInsertSchema(partnerPayouts).omit
   processedAt: true,
 });
 
+// ==================== SMART FEATURES ZOD SCHEMAS ====================
+
+export const insertBankConnectionSchema = createInsertSchema(bankConnections).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastSyncAt: true,
+});
+
+export const insertBankFeedTransactionSchema = createInsertSchema(bankFeedTransactions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertCategorizationRuleSchema = createInsertSchema(categorizationRules).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  usageCount: true,
+  lastUsedAt: true,
+});
+
+export const insertDocumentScanSchema = createInsertSchema(documentScans).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  reviewedAt: true,
+});
+
+export const insertRecurringInvoiceSchema = createInsertSchema(recurringInvoices).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastGeneratedAt: true,
+  totalGenerated: true,
+  totalAmount: true,
+});
+
+export const insertPaymentReminderSchema = createInsertSchema(paymentReminders).omit({
+  id: true,
+  createdAt: true,
+  sentAt: true,
+});
+
+export const insertPaymentGatewayConfigSchema = createInsertSchema(paymentGatewayConfig).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  totalTransactions: true,
+  totalAmount: true,
+});
+
+export const insertPaymentLinkSchema = createInsertSchema(paymentLinks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  paymentReceivedAt: true,
+});
+
+export const insertCashFlowForecastSchema = createInsertSchema(cashFlowForecasts).omit({
+  id: true,
+  generatedAt: true,
+});
+
+export const insertSmartAlertSchema = createInsertSchema(smartAlerts).omit({
+  id: true,
+  createdAt: true,
+  readAt: true,
+  dismissedAt: true,
+});
+
+export const insertVoiceTranscriptionSchema = createInsertSchema(voiceTranscriptions).omit({
+  id: true,
+  createdAt: true,
+  confirmedAt: true,
+});
+
+export const insertIntegrationConnectionSchema = createInsertSchema(integrationConnections).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastSyncAt: true,
+  totalOrdersSynced: true,
+  totalProductsSynced: true,
+});
+
+export const insertWebhookSchema = createInsertSchema(webhooks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  totalTriggered: true,
+  lastTriggeredAt: true,
+  consecutiveFailures: true,
+  autoDisabledAt: true,
+});
+
+export const insertWebhookLogSchema = createInsertSchema(webhookLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
 // ==================== TYPES ====================
 
 export type User = typeof users.$inferSelect;
@@ -2645,3 +3374,33 @@ export type Commission = typeof commissions.$inferSelect;
 export type InsertCommission = z.infer<typeof insertCommissionSchema>;
 export type PartnerPayout = typeof partnerPayouts.$inferSelect;
 export type InsertPartnerPayout = z.infer<typeof insertPartnerPayoutSchema>;
+
+// Smart Features Types
+export type BankConnection = typeof bankConnections.$inferSelect;
+export type InsertBankConnection = z.infer<typeof insertBankConnectionSchema>;
+export type BankFeedTransaction = typeof bankFeedTransactions.$inferSelect;
+export type InsertBankFeedTransaction = z.infer<typeof insertBankFeedTransactionSchema>;
+export type CategorizationRule = typeof categorizationRules.$inferSelect;
+export type InsertCategorizationRule = z.infer<typeof insertCategorizationRuleSchema>;
+export type DocumentScan = typeof documentScans.$inferSelect;
+export type InsertDocumentScan = z.infer<typeof insertDocumentScanSchema>;
+export type RecurringInvoice = typeof recurringInvoices.$inferSelect;
+export type InsertRecurringInvoice = z.infer<typeof insertRecurringInvoiceSchema>;
+export type PaymentReminder = typeof paymentReminders.$inferSelect;
+export type InsertPaymentReminder = z.infer<typeof insertPaymentReminderSchema>;
+export type PaymentGatewayConfig = typeof paymentGatewayConfig.$inferSelect;
+export type InsertPaymentGatewayConfig = z.infer<typeof insertPaymentGatewayConfigSchema>;
+export type PaymentLink = typeof paymentLinks.$inferSelect;
+export type InsertPaymentLink = z.infer<typeof insertPaymentLinkSchema>;
+export type CashFlowForecast = typeof cashFlowForecasts.$inferSelect;
+export type InsertCashFlowForecast = z.infer<typeof insertCashFlowForecastSchema>;
+export type SmartAlert = typeof smartAlerts.$inferSelect;
+export type InsertSmartAlert = z.infer<typeof insertSmartAlertSchema>;
+export type VoiceTranscription = typeof voiceTranscriptions.$inferSelect;
+export type InsertVoiceTranscription = z.infer<typeof insertVoiceTranscriptionSchema>;
+export type IntegrationConnection = typeof integrationConnections.$inferSelect;
+export type InsertIntegrationConnection = z.infer<typeof insertIntegrationConnectionSchema>;
+export type Webhook = typeof webhooks.$inferSelect;
+export type InsertWebhook = z.infer<typeof insertWebhookSchema>;
+export type WebhookLog = typeof webhookLogs.$inferSelect;
+export type InsertWebhookLog = z.infer<typeof insertWebhookLogSchema>;

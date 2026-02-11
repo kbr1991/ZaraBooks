@@ -38,6 +38,15 @@ import {
   IndianRupee,
   ArrowDownCircle,
   ArrowUpCircle,
+  // Smart features icons
+  Wand2,
+  Camera,
+  Repeat,
+  TrendingUp,
+  Bell,
+  Mic,
+  Store,
+  Webhook,
 } from 'lucide-react';
 
 interface MenuItem {
@@ -89,8 +98,21 @@ const menuGroups: MenuGroup[] = [
     icon: <Landmark className="h-4 w-4" />,
     items: [
       { label: 'Bank Accounts', path: '/bank-accounts', icon: <Landmark className="h-4 w-4" /> },
+      { label: 'Bank Feeds', path: '/bank-feeds', icon: <Wand2 className="h-4 w-4" /> },
       { label: 'Bank Reconciliation', path: '/bank-reconciliation', icon: <ArrowLeftRight className="h-4 w-4" /> },
       { label: 'Bank Import', path: '/bank-import', icon: <Upload className="h-4 w-4" /> },
+    ],
+  },
+  {
+    label: 'Smart Features',
+    icon: <Wand2 className="h-4 w-4" />,
+    items: [
+      { label: 'Document Scanner', path: '/document-scan', icon: <Camera className="h-4 w-4" /> },
+      { label: 'Recurring Invoices', path: '/recurring-invoices', icon: <Repeat className="h-4 w-4" /> },
+      { label: 'Cash Flow Forecast', path: '/cash-flow-forecast', icon: <TrendingUp className="h-4 w-4" /> },
+      { label: 'Smart Alerts', path: '/smart-alerts', icon: <Bell className="h-4 w-4" /> },
+      { label: 'Voice Entry', path: '/voice-entry', icon: <Mic className="h-4 w-4" /> },
+      { label: 'Integrations', path: '/integrations', icon: <Store className="h-4 w-4" /> },
     ],
   },
   {
