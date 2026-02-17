@@ -73,18 +73,11 @@ export default function Login() {
               {isLoginPending ? 'Signing in...' : 'Sign In'}
             </Button>
           </form>
-          <div className="mt-4 text-center text-sm space-y-2">
-            <div>
-              Don't have an account?{' '}
-              <Link to="/signup" className="text-primary hover:underline font-medium">
-                Start Free Trial
-              </Link>
-            </div>
-            <div>
-              <Link to="/register" className="text-muted-foreground hover:underline">
-                Register with invite
-              </Link>
-            </div>
+          <div className="mt-4 text-center text-sm">
+            Don't have an account?{' '}
+            <Link to="/register" className="text-primary hover:underline">
+              Register
+            </Link>
           </div>
         </CardContent>
       </Card>

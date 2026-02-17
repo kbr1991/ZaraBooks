@@ -49,9 +49,6 @@ import adminRoutes from './routes/admin';
 import partnerRoutes from './routes/partner';
 import tenantRoutes from './routes/tenant';
 
-// Public signup
-import signupRoutes from './routes/signup';
-
 // Smart features routes
 import bankFeedsRoutes from './routes/bankFeeds';
 import documentScanRoutes from './routes/documentScan';
@@ -178,9 +175,6 @@ app.use('/api/payments-received', paymentsReceivedRoutes);
 app.use('/api/payments-made', paymentsMadeRoutes);
 app.use('/api/bank-reconciliation', bankReconciliationRoutes);
 app.use('/api/document-templates', documentTemplatesRoutes);
-
-// Public signup
-app.use('/api/signup', signupRoutes);
 
 // Multi-tenancy routes
 app.use('/api/admin', adminRoutes);

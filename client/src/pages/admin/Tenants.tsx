@@ -1,18 +1,16 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
+  Building2,
   Search,
   MoreHorizontal,
   ChevronLeft,
   ChevronRight,
   Users,
   Building,
-  AlertTriangle,
-  Plus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import {
   Table,
@@ -35,24 +33,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { toast } from '@/hooks/useToast';
-
-interface DuplicateMatch {
-  id: string;
-  name: string;
-  billingEmail: string | null;
-  gstNumber: string | null;
-  slug: string;
-  matchType: string;
-}
 
 export default function Tenants() {
   const queryClient = useQueryClient();
@@ -60,20 +40,6 @@ export default function Tenants() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
   const [plan, setPlan] = useState('all');
-
-  // Create tenant dialog
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [createForm, setCreateForm] = useState({
-    name: '',
-    slug: '',
-    billingEmail: '',
-    gstNumber: '',
-    subscriptionPlan: 'free',
-  });
-
-  // Duplicate warning
-  const [duplicateWarning, setDuplicateWarning] = useState<DuplicateMatch[]>([]);
-  const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-tenants', page, search, status, plan],
@@ -110,64 +76,6 @@ export default function Tenants() {
     },
   });
 
-  const createTenantMutation = useMutation({
-    mutationFn: async (data: typeof createForm) => {
-      const response = await fetch('/api/admin/tenants', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) {
-        const result = await response.json();
-        throw new Error(result.error || 'Failed to create tenant');
-      }
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-tenants'] });
-      setShowCreateDialog(false);
-      setCreateForm({ name: '', slug: '', billingEmail: '', gstNumber: '', subscriptionPlan: 'free' });
-      toast({ title: 'Tenant created successfully' });
-    },
-    onError: (error: Error) => {
-      toast({ title: error.message, variant: 'destructive' });
-    },
-  });
-
-  const submitCreateTenant = () => {
-    createTenantMutation.mutate(createForm);
-  };
-
-  const handleCreateSubmit = async () => {
-    // Check for duplicates first
-    try {
-      const response = await fetch('/api/admin/tenants/check-duplicate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          billingEmail: createForm.billingEmail || undefined,
-          gstNumber: createForm.gstNumber || undefined,
-          slug: createForm.slug || undefined,
-        }),
-      });
-
-      if (response.ok) {
-        const matches: DuplicateMatch[] = await response.json();
-        if (matches.length > 0) {
-          setDuplicateWarning(matches);
-          setShowDuplicateDialog(true);
-          return;
-        }
-      }
-    } catch {
-      // If duplicate check fails, proceed with creation
-    }
-
-    submitCreateTenant();
-  };
-
   const getStatusBadge = (tenant: any) => {
     if (!tenant.isActive) {
       return <Badge variant="secondary">Inactive</Badge>;
@@ -195,8 +103,8 @@ export default function Tenants() {
             Manage all subscribing organizations
           </p>
         </div>
-        <Button onClick={() => setShowCreateDialog(true)}>
-          <Plus className="h-4 w-4 mr-2" />
+        <Button>
+          <Building2 className="h-4 w-4 mr-2" />
           Add Tenant
         </Button>
       </div>
@@ -363,127 +271,6 @@ export default function Tenants() {
           </div>
         </div>
       )}
-      {/* Create Tenant Dialog */}
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create Tenant</DialogTitle>
-            <DialogDescription>
-              Add a new subscribing organization
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="tenant-name">Organization Name *</Label>
-              <Input
-                id="tenant-name"
-                value={createForm.name}
-                onChange={(e) => setCreateForm(prev => ({ ...prev, name: e.target.value }))}
-                placeholder="Acme Corp"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="tenant-slug">Slug *</Label>
-              <Input
-                id="tenant-slug"
-                value={createForm.slug}
-                onChange={(e) => setCreateForm(prev => ({ ...prev, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') }))}
-                placeholder="acme-corp"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="tenant-email">Billing Email</Label>
-              <Input
-                id="tenant-email"
-                type="email"
-                value={createForm.billingEmail}
-                onChange={(e) => setCreateForm(prev => ({ ...prev, billingEmail: e.target.value }))}
-                placeholder="billing@acme.com"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="tenant-gst">GST Number</Label>
-              <Input
-                id="tenant-gst"
-                value={createForm.gstNumber}
-                onChange={(e) => setCreateForm(prev => ({ ...prev, gstNumber: e.target.value.toUpperCase() }))}
-                placeholder="27ABCDE1234F1Z5"
-                maxLength={15}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="tenant-plan">Subscription Plan</Label>
-              <Select
-                value={createForm.subscriptionPlan}
-                onValueChange={(val) => setCreateForm(prev => ({ ...prev, subscriptionPlan: val }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="free">Free</SelectItem>
-                  <SelectItem value="starter">Starter</SelectItem>
-                  <SelectItem value="professional">Professional</SelectItem>
-                  <SelectItem value="enterprise">Enterprise</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleCreateSubmit}
-              disabled={!createForm.name || !createForm.slug || createTenantMutation.isPending}
-            >
-              {createTenantMutation.isPending ? 'Creating...' : 'Create Tenant'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Duplicate Warning Dialog */}
-      <Dialog open={showDuplicateDialog} onOpenChange={setShowDuplicateDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-yellow-500" />
-              Possible Duplicates Found
-            </DialogTitle>
-            <DialogDescription>
-              The following existing tenants match the details you entered. Do you want to continue?
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 max-h-60 overflow-y-auto">
-            {duplicateWarning.map((match) => (
-              <div key={`${match.id}-${match.matchType}`} className="flex items-center justify-between p-3 border rounded-lg">
-                <div>
-                  <p className="font-medium">{match.name}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {match.billingEmail || match.slug}
-                  </p>
-                </div>
-                <Badge variant="outline">{match.matchType}</Badge>
-              </div>
-            ))}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDuplicateDialog(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                setShowDuplicateDialog(false);
-                submitCreateTenant();
-              }}
-            >
-              Continue Anyway
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

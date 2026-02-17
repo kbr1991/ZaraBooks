@@ -2,77 +2,9 @@ import { Router } from 'express';
 import { db } from '../../db';
 import { requireSuperAdmin, AuthenticatedRequest } from '../../middleware/auth';
 import { tenants, tenantUsers, companies, subscriptions, users } from '@shared/schema';
-import { eq, and, like, desc, count, ilike, or, ne } from 'drizzle-orm';
+import { eq, and, like, desc, count, ilike, or } from 'drizzle-orm';
 
 const router = Router();
-
-// Check for duplicate tenants by email, GST number, or slug
-router.post('/check-duplicate', requireSuperAdmin, async (req: AuthenticatedRequest, res) => {
-  try {
-    const { billingEmail, gstNumber, slug, excludeId } = req.body;
-
-    const matches: Array<{ id: string; name: string; billingEmail: string | null; gstNumber: string | null; slug: string; matchType: string }> = [];
-
-    if (gstNumber) {
-      const gstMatches = await db.select({
-        id: tenants.id,
-        name: tenants.name,
-        billingEmail: tenants.billingEmail,
-        gstNumber: tenants.gstNumber,
-        slug: tenants.slug,
-      }).from(tenants).where(
-        excludeId
-          ? and(eq(tenants.gstNumber, gstNumber.toUpperCase()), ne(tenants.id, excludeId))
-          : eq(tenants.gstNumber, gstNumber.toUpperCase())
-      );
-      gstMatches.forEach(m => matches.push({ ...m, matchType: 'GST Number' }));
-    }
-
-    if (billingEmail) {
-      const emailMatches = await db.select({
-        id: tenants.id,
-        name: tenants.name,
-        billingEmail: tenants.billingEmail,
-        gstNumber: tenants.gstNumber,
-        slug: tenants.slug,
-      }).from(tenants).where(
-        excludeId
-          ? and(ilike(tenants.billingEmail, billingEmail), ne(tenants.id, excludeId))
-          : ilike(tenants.billingEmail, billingEmail)
-      );
-      // Avoid duplicates already found by GST
-      emailMatches.forEach(m => {
-        if (!matches.find(existing => existing.id === m.id)) {
-          matches.push({ ...m, matchType: 'Email' });
-        }
-      });
-    }
-
-    if (slug) {
-      const slugMatches = await db.select({
-        id: tenants.id,
-        name: tenants.name,
-        billingEmail: tenants.billingEmail,
-        gstNumber: tenants.gstNumber,
-        slug: tenants.slug,
-      }).from(tenants).where(
-        excludeId
-          ? and(eq(tenants.slug, slug), ne(tenants.id, excludeId))
-          : eq(tenants.slug, slug)
-      );
-      slugMatches.forEach(m => {
-        if (!matches.find(existing => existing.id === m.id)) {
-          matches.push({ ...m, matchType: 'Slug' });
-        }
-      });
-    }
-
-    res.json(matches);
-  } catch (error) {
-    console.error('Check duplicate error:', error);
-    res.status(500).json({ error: 'Failed to check for duplicates' });
-  }
-});
 
 // List all tenants with pagination and filtering
 router.get('/', requireSuperAdmin, async (req: AuthenticatedRequest, res) => {

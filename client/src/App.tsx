@@ -78,7 +78,6 @@ const Integrations = lazy(() => import('@/pages/Integrations'));
 
 // Public pages
 const AcceptInvite = lazy(() => import('@/pages/AcceptInvite'));
-const Signup = lazy(() => import('@/pages/Signup'));
 
 // Admin pages
 const AdminDashboard = lazy(() => import('@/pages/admin/Dashboard'));
@@ -217,11 +216,6 @@ export default function App() {
         {/* Public routes */}
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
-        <Route path="/signup" element={
-          <Suspense fallback={<PageLoader />}>
-            <Signup />
-          </Suspense>
-        } />
         <Route path="/accept-invite" element={
           <Suspense fallback={<PageLoader />}>
             <AcceptInvite />
