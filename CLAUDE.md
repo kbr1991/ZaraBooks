@@ -12,7 +12,7 @@
 | **Target Users** | CA firms, Startups (India) |
 | **Deployed URL** | https://scintillating-stillness-production-02d4.up.railway.app |
 | **Repository** | https://github.com/kbr1991/ZaraBooks |
-| **Current Version** | 1.4.0 |
+| **Current Version** | 1.4.1 |
 
 ### Tech Stack
 - **Frontend:** React 18, TypeScript, Tailwind CSS, React Query, React Router
@@ -677,4 +677,46 @@ Previously, PurchaseOrders, Bills, CreditNotes, DebitNotes became unusable after
 
 ---
 
-*Last Updated: 2026-02-11*
+### 2026-02-26 (Session 11 - Debug & Bug Fixes)
+
+**Root Cause Analysis & Fixes:**
+
+1. **Test Database Schema Out of Sync (43 integration tests failing):**
+   - All integration tests were failing with `column "tenant_id" of relation "companies" does not exist`
+   - Root cause: Session 9 added `tenant_id` to the `companies` table in `shared/schema.ts` but the test database (`zarabooks_test`) was never updated
+   - Fix: Pushed schema to test database — `DATABASE_URL=postgresql://localhost/zarabooks_test npx drizzle-kit push --force`
+   - All 151 tests now passing (102 unit + 49 integration)
+
+2. **Partner Registration 404 Error:**
+   - `client/src/pages/partner/Register.tsx` was calling `/api/partner/register`
+   - Actual backend endpoint is `/api/partner/auth/register` (mounted under `/auth` subrouter in `server/src/routes/partner/index.ts`)
+   - Fix: Corrected the fetch URL in `Register.tsx`
+
+3. **Chart of Accounts: Unsafe Account Deletion:**
+   - `server/src/routes/chartOfAccounts.ts` had a `TODO` — deletion never checked if an account had existing journal entry lines
+   - Could create orphaned journal entry references
+   - Fix: Added `journalEntryLines` lookup before deletion; returns 400 if any exist
+
+4. **Bank Reconciliation: Unreconciled Endpoint Returned All Transactions:**
+   - `server/src/routes/bankReconciliation.ts` had a `TODO` — always returned `isReconciled: false` without filtering
+   - Fix: Queries `bankReconciliationLines` for `isReconciled = true` entries and excludes them from results
+
+**Files Modified (3 files, +31/-15 lines):**
+- `client/src/pages/partner/Register.tsx` - Fixed API endpoint path
+- `server/src/routes/chartOfAccounts.ts` - Added journal entry safety check before deletion
+- `server/src/routes/bankReconciliation.ts` - Filter reconciled entries from unreconciled endpoint
+
+**Deployment:**
+- Pushed to GitHub (`2742d28`)
+- Auto-deployed to Railway via GitHub integration
+- Health check confirmed: `{"status":"ok","service":"zara-books"}`
+
+**Note on Test DB Maintenance:**
+After any schema change to `shared/schema.ts`, run the following to keep the test database in sync:
+```bash
+DATABASE_URL=postgresql://localhost/zarabooks_test npx drizzle-kit push --force
+```
+
+---
+
+*Last Updated: 2026-02-26*
