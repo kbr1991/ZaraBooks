@@ -44,7 +44,7 @@ export default function PartnerRegister() {
 
   const registerMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
-      const response = await fetch('/api/partner/register', {
+      const response = await fetch('/api/partner/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

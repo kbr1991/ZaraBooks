@@ -240,7 +240,14 @@ router.delete('/:id', requireCompany, async (req: AuthenticatedRequest, res) => 
       return res.status(400).json({ error: 'Cannot delete account with child accounts' });
     }
 
-    // TODO: Check for journal entries using this account
+    // Check for journal entries using this account
+    const usedInJournal = await db.query.journalEntryLines.findFirst({
+      where: eq(journalEntryLines.accountId, id),
+    });
+
+    if (usedInJournal) {
+      return res.status(400).json({ error: 'Cannot delete account with existing journal entries' });
+    }
 
     await db.delete(chartOfAccounts).where(eq(chartOfAccounts.id, id));
     res.json({ message: 'Account deleted' });

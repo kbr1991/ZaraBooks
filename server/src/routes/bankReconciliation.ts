@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { db } from '../db';
 import { bankReconciliations, bankReconciliationLines, bankAccounts, journalEntries, journalEntryLines } from '@shared/schema';
-import { eq, and, desc, asc, gte, lte } from 'drizzle-orm';
+import { eq, and, desc, asc, gte, lte, notInArray, sql } from 'drizzle-orm';
 import { requireCompany, AuthenticatedRequest } from '../middleware/auth';
 
 const router = Router();
@@ -130,18 +130,27 @@ router.get('/bank-account/:bankAccountId/unreconciled', requireCompany, async (r
       .orderBy(desc(journalEntries.entryDate));
 
     // Filter out already reconciled transactions
-    // TODO: Check against reconciliation lines
+    const reconciledLines = await db
+      .select({ journalEntryId: bankReconciliationLines.journalEntryId })
+      .from(bankReconciliationLines)
+      .where(eq(bankReconciliationLines.isReconciled, true));
 
-    const result = transactions.map(t => ({
-      id: t.id,
-      date: t.date,
-      description: t.description || t.narration || 'Transaction',
-      reference: t.reference,
-      debit: t.debit,
-      credit: t.credit,
-      journalEntryId: t.journalEntryId,
-      isReconciled: false,
-    }));
+    const reconciledJournalEntryIds = reconciledLines
+      .map(l => l.journalEntryId)
+      .filter((id): id is string => id !== null);
+
+    const result = transactions
+      .filter(t => !reconciledJournalEntryIds.includes(t.journalEntryId))
+      .map(t => ({
+        id: t.id,
+        date: t.date,
+        description: t.description || t.narration || 'Transaction',
+        reference: t.reference,
+        debit: t.debit,
+        credit: t.credit,
+        journalEntryId: t.journalEntryId,
+        isReconciled: false,
+      }));
 
     res.json(result);
   } catch (error) {
